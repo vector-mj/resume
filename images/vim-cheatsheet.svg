@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640">
+  <rect width="640" height="640" rx="24" fill="#1c1c1c"/>
+  <rect x="0" y="0" width="640" height="64" rx="24" fill="#2e2e2e"/>
+  <circle cx="44" cy="32" r="10" fill="#ff5f56"/>
+  <circle cx="80" cy="32" r="10" fill="#ffbd2e"/>
+  <circle cx="116" cy="32" r="10" fill="#27c93f"/>
+  <text x="320" y="360" font-family="Menlo,Consolas,monospace" font-size="150" font-weight="bold" fill="#00a388" text-anchor="middle">VIM</text>
+  <text x="320" y="460" font-family="Menlo,Consolas,monospace" font-size="40" fill="#838383" text-anchor="middle">:wq!</text>
+  <rect x="220" y="530" width="200" height="8" fill="#00a388"/>
+</svg>

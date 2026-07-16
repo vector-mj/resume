@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIM cheatsheet — MJH</title>
+<style>
+  :root { --teal:#00a388; --dark:#333; --body:#4d4d4d; --role:#5d5d5d; --gray:#838383; --border:#e2e2e2; --card:#f7f7f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Source Sans 3","Source Sans Pro","Lato","Segoe UI",system-ui,sans-serif; color:var(--body); line-height:1.65; background:#fff; }
+  a { color:var(--teal); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .wrap { max-width:720px; margin:0 auto; padding:0 1.4rem; }
+  nav { position:sticky; top:0; z-index:10; background:rgba(255,255,255,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--border); }
+  nav .wrap { display:flex; align-items:center; justify-content:space-between; height:56px; }
+  nav .brand a { font-weight:700; color:var(--dark); font-size:1.1rem; }
+  nav .links a { color:var(--role); font-weight:600; margin-left:1.4rem; }
+  nav .links a:hover { color:var(--teal); text-decoration:none; }
+  article { padding:2.5rem 0 3rem; }
+  .date { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.85rem; color:var(--gray); }
+  article h1 { margin:.3rem 0 1.4rem; font-size:2.1rem; color:var(--dark); line-height:1.15; }
+  article .hero { max-width:100%; height:auto; border-radius:8px; border:1px solid var(--border); margin:0 0 1.6rem; display:block; }
+  article h2 { margin:2rem 0 .6rem; font-size:1.4rem; color:var(--dark); }
+  article p { margin:0 0 1rem; }
+  article code { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:.05rem .35rem; font-size:.85rem; color:var(--dark); font-family:ui-monospace,Menlo,Consolas,monospace; white-space:nowrap; }
+  table.cheat { width:100%; border-collapse:collapse; margin:0 0 1rem; }
+  table.cheat td { padding:.35rem .6rem; border-top:1px solid var(--border); vertical-align:top; }
+  table.cheat tr:last-child td { border-bottom:1px solid var(--border); }
+  ul.plain { padding-left:1.2rem; margin:0 0 1rem; }
+  .back { display:inline-block; margin-top:2rem; font-weight:600; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <span class="brand"><a href="../index.html">MJH</a></span>
+    <span class="links">
+      <a href="../resume_short.html">Resume</a>
+      <a href="../blog.html">Blog</a>
+      <a href="../index.html#about">About</a>
+    </span>
+  </div>
+</nav>
+
+<div class="wrap">
+  <article>
+    <span class="date">2026-07-16</span>
+    <h1>VIM</h1>
+
+    <img class="hero" src="../images/vim-cheatsheet.svg" alt="VIM">
+
+    <p>First of a series of cheatsheets. The commands I actually reach for in Vim.</p>
+
+    <h2>Commands</h2>
+    <table class="cheat">
+      <tr><td><code>:help</code></td><td>manual</td></tr>
+      <tr><td><code>vimtutor</code></td><td>vim tutorial</td></tr>
+      <tr><td><code>:open &lt;filename&gt;</code></td><td>open file</td></tr>
+      <tr><td><code>:Explore</code></td><td>navigate to or open other files</td></tr>
+      <tr><td><code>i</code></td><td>insert mode</td></tr>
+      <tr><td><code>&lt;</code> | <code>&gt;</code></td><td>indent or unindent line one level</td></tr>
+      <tr><td><code>.</code></td><td>repeat last command</td></tr>
+      <tr><td><code>R</code></td><td>replace mode</td></tr>
+      <tr><td><code>b</code> / <code>w</code></td><td>move to previous or next word</td></tr>
+      <tr><td><code>:save &lt;name&gt;</code></td><td>save file as</td></tr>
+      <tr><td><code>:edit &lt;filename&gt;</code></td><td>edit file</td></tr>
+      <tr><td><code>:vsplit</code> | <code>vs</code> | <code>C-w v</code></td><td>vertical split</td></tr>
+      <tr><td><code>:hsplit</code> | <code>sp</code> | <code>C-w s</code></td><td>horizontal split</td></tr>
+      <tr><td><code>C-w hjkl</code></td><td>change window</td></tr>
+      <tr><td><code>C-w HJKL</code></td><td>move window to</td></tr>
+      <tr><td><code>C-w +- &lt;&gt;</code></td><td>resize window</td></tr>
+      <tr><td><code>C-w C-r</code></td><td>rotate windows</td></tr>
+      <tr><td><code>:ls</code></td><td>show buffers</td></tr>
+      <tr><td><code>:b &lt;number&gt;</code></td><td>change current buffer to</td></tr>
+      <tr><td><code>:bn</code> | <code>:bp</code></td><td>move to next or previous buffer</td></tr>
+      <tr><td><code>:close &lt;current or buffer-number&gt;</code></td><td>close buffer</td></tr>
+      <tr><td><code>:set mouse=a</code></td><td>enable mouse functionality</td></tr>
+      <tr><td><code>:terminal</code></td><td>open terminal</td></tr>
+      <tr><td><code>:set number</code></td><td>show line numbers</td></tr>
+      <tr><td><code>:54</code></td><td>move to line 54</td></tr>
+      <tr><td><code>ggVG</code></td><td>select all lines</td></tr>
+      <tr><td><code>u</code></td><td>undo</td></tr>
+      <tr><td><code>Ctrl-r</code></td><td>redo</td></tr>
+      <tr><td><code>tabnew &lt;name&gt;</code></td><td>new tab</td></tr>
+      <tr><td><code>gt</code></td><td>switch between tabs</td></tr>
+      <tr><td><code>shift+v</code></td><td>select line</td></tr>
+      <tr><td><code>ctrl+v</code></td><td>block select</td></tr>
+      <tr><td><code>y</code></td><td>yank selected block or lines</td></tr>
+      <tr><td><code>p</code></td><td>paste lines that you yanked before</td></tr>
+      <tr><td><code>d</code> | <code>x</code></td><td>delete/cut selected block</td></tr>
+      <tr><td><code>o</code></td><td>create new line below and move to insert mode</td></tr>
+      <tr><td><code>O</code></td><td>create new line above and move to insert mode</td></tr>
+      <tr><td><code>:syntax on|off</code></td><td>enable or disable syntax highlighter</td></tr>
+      <tr><td><code>mks</code> | <code>mks! &lt;name.vim&gt;</code></td><td>make session file</td></tr>
+      <tr><td><code>vim -S</code> | <code>:so session.vim</code></td><td>open session file</td></tr>
+      <tr><td><code>:scrollbind</code></td><td>scroll same in all panes</td></tr>
+      <tr><td><code>:set noscrollbind</code> | <code>:tabdo windo set noscrollbind</code></td><td>disable scrollbind</td></tr>
+      <tr><td><code>ctrl+-</code></td><td>zoom out</td></tr>
+      <tr><td><code>ctrl+shift++</code></td><td>zoom in</td></tr>
+      <tr><td><code>:colorschema retrobox</code></td><td>set colorscheme</td></tr>
+      <tr><td><code>:set filetype=&lt;extension|html&gt;</code></td><td>set filetype</td></tr>
+      <tr><td><code>:X</code> | <code>-x &lt;filename&gt;</code></td><td>encrypt file</td></tr>
+      <tr><td><code>set key=</code></td><td>disable encryption</td></tr>
+      <tr><td><code>0</code></td><td>jump to start of line</td></tr>
+      <tr><td><code>$</code></td><td>jump to end of line</td></tr>
+      <tr><td><code>gg</code></td><td>go to first line</td></tr>
+      <tr><td><code>G</code></td><td>go to last line</td></tr>
+      <tr><td><code>:w !sudo tee %</code></td><td>save readonly file</td></tr>
+      <tr><td><code>~/.vimrc</code></td><td>make your configuration persistent by writing it here</td></tr>
+      <tr><td><code>:cd %:p:h</code></td><td>change vim dir to current dir</td></tr>
+    </table>
+
+    <h2>Vimdiff</h2>
+    <p>
+      <code>shift+v</code> — select lines that you want to change,
+      then type <code>:diffget</code> or <code>:diffput</code> to make changes.
+      Run <code>:diffupdate</code> to refresh the page.
+    </p>
+
+    <h2>Websites</h2>
+    <ul class="plain">
+      <li><a href="https://vimawesome.com">vimawesome.com</a></li>
+      <li><a href="https://vimtricks.com">vimtricks.com</a></li>
+      <li><a href="https://vimonlineeditor.com">vimonlineeditor.com</a></li>
+    </ul>
+
+    <h2>Plugins</h2>
+    <ul class="plain">
+      <li>vim-plug</li>
+      <li>vim-windowswap</li>
+      <li>nerdtree</li>
+      <li>coc.nvim</li>
+      <li>vim-gitgutter</li>
+      <li>vim-startify</li>
+      <li>vim-multiple-cursors</li>
+    </ul>
+
+    <a class="back" href="../blog.html">&larr; Back to blog</a>
+  </article>
+</div>
+</body>
+</html>

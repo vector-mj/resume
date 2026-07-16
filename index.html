@@ -54,6 +54,11 @@
   .contact span.item { color: var(--body); }
   .contact .label { color: var(--gray); margin-right: .35rem; }
 
+  /* avatar */
+  .hero-head { display: flex; align-items: center; gap: 1.3rem; }
+  .avatar { width: 112px; height: 112px; border-radius: 50%; object-fit: cover;
+            flex: none; border: 2px solid var(--border); }
+
   /* sections */
   section { padding: 1.6rem 0; }
   h2 {
@@ -102,6 +107,8 @@
 
   @media (max-width: 560px) {
     header.hero h1 { font-size: 2.1rem; }
+    .hero-head { gap: .9rem; }
+    .avatar { width: 84px; height: 84px; }
     nav .links a { margin-left: 1rem; }
   }
 </style>

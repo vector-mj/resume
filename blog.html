@@ -23,6 +23,9 @@
   ul.posts { list-style:none; padding:0; margin:0; }
   ul.posts li { padding:1rem 0; border-top:1px solid var(--border); }
   ul.posts li:last-child { border-bottom:1px solid var(--border); }
+  ul.posts li a { display:flex; gap:1rem; align-items:flex-start; }
+  ul.posts .thumb { width:120px; height:80px; object-fit:cover; border-radius:6px; flex-shrink:0; }
+  @media (max-width:480px) { ul.posts .thumb { width:80px; height:60px; } }
   ul.posts .date { display:block; font-size:.85rem; color:var(--gray); font-family:ui-monospace,Menlo,Consolas,monospace; }
   ul.posts .title { font-size:1.2rem; font-weight:700; color:var(--dark); }
   ul.posts a:hover .title { color:var(--teal); }
@@ -46,13 +49,16 @@
   <h1 class="page"><span class="hl">/</span> Blog</h1>
   <p class="sub">Notes on infra, reliability, and whatever I'm breaking this week.</p>
 
-  <!-- ponytail: newest first. Copy a <li>, point href at blog/<slug>.html, done. -->
+  <!-- ponytail: newest first. Copy a <li>, point href at blog/<slug>.html, thumb at images/<slug>.jpg, done. -->
   <ul class="posts">
     <li>
       <a href="blog/hello-world.html">
-        <span class="date">2026-07-16</span>
-        <span class="title">Hello, world</span>
-        <p class="excerpt">Why this blog is three hand-written HTML files and no build step.</p>
+        <img class="thumb" src="images/hello-world.jpg" alt="" loading="lazy">
+        <span>
+          <span class="date">2026-07-16</span>
+          <span class="title">Hello, world</span>
+          <p class="excerpt">Why this blog is three hand-written HTML files and no build step.</p>
+        </span>
       </a>
     </li>
   </ul>

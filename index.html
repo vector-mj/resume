@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mohammad Javad Hoseini</title>
+<style>
+  :root {
+    --teal: #00a388;
+    --dark: #333;
+    --body: #4d4d4d;
+    --role: #5d5d5d;
+    --gray: #838383;
+    --rule: #444;
+    --card: #f7f7f7;
+    --border: #e2e2e2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Source Sans 3", "Source Sans Pro", "Lato", "Segoe UI", system-ui, sans-serif;
+    color: var(--body);
+    background: #fff;
+    line-height: 1.55;
+  }
+  a { color: var(--teal); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 0 1.4rem; }
+
+  /* nav */
+  nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(255,255,255,.92);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--border);
+  }
+  nav .wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    height: 56px;
+  }
+  nav .brand { font-weight: 700; color: var(--dark); font-size: 1.1rem; letter-spacing: .02em; }
+  nav .links a { color: var(--role); font-weight: 600; margin-left: 1.4rem; }
+  nav .links a:hover { color: var(--teal); text-decoration: none; }
+
+  /* hero */
+  header.hero { padding: 3rem 0 1.5rem; }
+  header.hero h1 { margin: 0; font-size: 2.6rem; font-weight: 700; color: var(--dark); line-height: 1.1; }
+  header.hero h1 .thin { font-weight: 200; color: var(--role); }
+  header.hero .title {
+    margin: .4rem 0 1.2rem; font-variant: small-caps; font-weight: 700;
+    font-size: 1.25rem; letter-spacing: .02em; color: var(--teal);
+  }
+  .contact { display: flex; flex-wrap: wrap; gap: .5rem 1.4rem; font-size: 1rem; }
+  .contact span.item { color: var(--body); }
+  .contact .label { color: var(--gray); margin-right: .35rem; }
+
+  /* sections */
+  section { padding: 1.6rem 0; }
+  h2 {
+    display: flex; align-items: flex-end; gap: .45em;
+    margin: 0 0 .8rem; font-size: 1.6rem; font-weight: 700; color: var(--dark);
+  }
+  h2 .hl { color: var(--teal); }
+  h2::after { content: ""; flex: 1; height: 0; border-top: 1.5px solid var(--rule); margin-bottom: .35em; }
+  p.lead { margin: 0 0 .8rem; }
+  .stack { font-size: .95rem; color: var(--role); }
+  .stack code {
+    background: var(--card); border: 1px solid var(--border); border-radius: 4px;
+    padding: .05rem .4rem; font-size: .85rem; color: var(--dark); margin: 0 .15rem;
+  }
+
+  /* key cards */
+  .key { border: 1px solid var(--border); border-radius: 8px; background: var(--card); margin-bottom: 1.1rem; overflow: hidden; }
+  .key .head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .6rem .9rem; border-bottom: 1px solid var(--border); background: #fff;
+  }
+  .key .head .name { font-weight: 700; color: var(--dark); }
+  .key .head .fp { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .78rem; color: var(--gray); }
+  .key pre {
+    margin: 0; padding: .9rem; overflow-x: auto;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .8rem; line-height: 1.4; color: var(--dark); white-space: pre;
+  }
+  button.copy {
+    border: 1px solid var(--teal); background: #fff; color: var(--teal);
+    font: inherit; font-size: .8rem; font-weight: 600; padding: .25rem .7rem;
+    border-radius: 5px; cursor: pointer; white-space: nowrap; margin-left: 1rem;
+  }
+  button.copy:hover { background: var(--teal); color: #fff; }
+  button.copy.done { border-color: var(--gray); color: var(--gray); background: #fff; }
+
+  .wallet { padding: .7rem .9rem; }
+  .wallet .row { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .35rem 0; }
+  .wallet .row + .row { border-top: 1px dashed var(--border); }
+  .wallet .coin { font-weight: 700; color: var(--dark); width: 4.5rem; flex: none; }
+  .wallet .addr { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .8rem; color: var(--body); overflow-x: auto; flex: 1; }
+
+  /* footer */
+  footer { border-top: 1px solid var(--border); padding: 1.6rem 0 3rem; margin-top: 1rem; font-size: .95rem; color: var(--gray); }
+  footer a { margin-right: 1.2rem; }
+
+  @media (max-width: 560px) {
+    header.hero h1 { font-size: 2.1rem; }
+    nav .links a { margin-left: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="brand">MJH</span>
+    <span class="links">
+      <a href="resume_short.html">Resume</a>
+      <a href="blog.html">Blog</a>
+      <a href="#about">About</a>
+    </span>
+  </div>
+</nav>
+
+<div class="wrap">
+
+  <header class="hero">
+    <h1><span class="thin">Mohammad Javad</span> Hoseini</h1>
+    <div class="title">Software / SRE Engineer</div>
+    <div class="contact">
+      <span class="item"><span class="label">Email</span><a href="mailto:mj.hosseini.dev@gmail.com">mj.hosseini.dev@gmail.com</a></span>
+      <span class="item"><span class="label">Telegram</span><a href="https://t.me/mj126">@mj126</a></span>
+    </div>
+  </header>
+
+  <section id="about">
+    <h2><span class="hl">/</span> About</h2>
+    <p class="lead">
+      <!-- ponytail: one-paragraph placeholder, rewrite in your own voice -->
+      Backend and reliability engineer. I build and run distributed systems and care
+      about the boring parts that keep them up: observability, sane deploys, and
+      recovering fast when things break.
+    </p>
+  </section>
+
+  <section id="keys">
+    <h2><span class="hl">/</span> Keys &amp; Wallet</h2>
+
+    <div class="key">
+      <div class="head">
+        <span class="name">SSH public key</span>
+        <button class="copy" data-target="ssh">Copy</button>
+      </div>
+      <pre id="ssh">ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBRAzIrfKUDBLXKuDGeSlPN5xaGebNgT4x39KafKoFCO Mohammadjavad Hoseini@H</pre>
+    </div>
+
+    <div class="key">
+      <div class="head">
+        <span class="name">GPG public key</span>
+        <span class="fp">FP: D254 60EF 6B10 3948 C95B&nbsp;&nbsp;6343 99D6 AF5A EDDD 1117</span>
+        <button class="copy" data-target="gpg">Copy</button>
+      </div>
+<pre id="gpg">-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+mDMEaFmJWBYJKwYBBAHaRw8BAQdAFuVVuqhoW1hIy/nVkbXulHiyVTO3y/i4vMec
+W5MM1dO0Pk1vaGFtbWFkamF2YWQgSG9zZWluaSAodC5tZS9tajEyNikgPG1qLmhv
+c3NlaW5pLmRldkBnbWFpbC5jb20+iJMEExYKADsWIQTSVGDvaxA5SMlbY0OZ1q9a
+7d0RFwUCaFmJWAIbAwULCQgHAgIiAgYVCgkICwIEFgIDAQIeBwIXgAAKCRCZ1q9a
+7d0RFzJlAQC0oWqbPD0arPbAdaTrSlglga9LryauHH6BYXPAy4TZAwEAkk1zDxoy
+oppqniML8Zmj/G3s29YpDE0/E9pBHEs8HA64OARoWYlYEgorBgEEAZdVAQUBAQdA
+yGmDta2VJc+jLqX5O4bfMk1puwALVBYKuQVE5EQBtRADAQgHiHgEGBYKACAWIQTS
+VGDvaxA5SMlbY0OZ1q9a7d0RFwUCaFmJWAIbDAAKCRCZ1q9a7d0RF6nDAP9PDBkE
+qniMPfaTcKLrNyh4vdGxA0XRj3V7OrlzdokqigEAu6HDnVAPXrGgDBWXPuUII54L
+iE6aBGMVuusQ8xDK8wk=
+=XrUf
+-----END PGP PUBLIC KEY BLOCK-----</pre>
+    </div>
+
+    <div class="key">
+      <div class="head">
+        <span class="name">Crypto wallets</span>
+      </div>
+      <div class="wallet">
+        <div class="row">
+          <span class="coin">BTC</span>
+          <span class="addr" id="btc">bc1qlpr8wfwx0qnnzseudsyvwjsgrccev7elycwgt6</span>
+          <button class="copy" data-target="btc">Copy</button>
+        </div>
+        <div class="row">
+          <span class="coin">ETH</span>
+          <span class="addr" id="eth">0xdaf0d4aea8aa1c7c7f68c8f5d509ab99e0c52979</span>
+          <button class="copy" data-target="eth">Copy</button>
+        </div>
+        <div class="row">
+          <span class="coin">TRX</span>
+          <span class="addr" id="trx">TA18vN93iscPQxt6JQdMMs4av6xucbAStT</span>
+          <button class="copy" data-target="trx">Copy</button>
+        </div>
+        <div class="row">
+          <span class="coin">SOL</span>
+          <span class="addr" id="sol">5juF1fWeu7rPoERWmCQELek6hSTbNtKtMmuLBsUYW6oj</span>
+          <button class="copy" data-target="sol">Copy</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <a href="resume_short.html">Resume (HTML)</a>
+    <a href="Mohammad_Javad_Hoseini_Resume.pdf">Resume (PDF)</a>
+    <a href="resume_full.html">Portfolio (HTML)</a>
+    <a href="Mohammad_Javad_Hoseini_Portfolio.pdf">Portfolio (PDF)</a>
+  </footer>
+
+</div>
+
+<script>
+  // copy-to-clipboard for any [data-target] button
+  document.querySelectorAll("button.copy").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var el = document.getElementById(btn.dataset.target);
+      if (!el) return;
+      navigator.clipboard.writeText(el.textContent.trim()).then(function () {
+        var old = btn.textContent;
+        btn.textContent = "Copied";
+        btn.classList.add("done");
+        setTimeout(function () { btn.textContent = old; btn.classList.remove("done"); }, 1500);
+      });
+    });
+  });
+</script>
+
+</body>
+</html>

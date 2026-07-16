@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hello, world — MJH</title>
+<style>
+  :root { --teal:#00a388; --dark:#333; --body:#4d4d4d; --role:#5d5d5d; --gray:#838383; --border:#e2e2e2; --card:#f7f7f7; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Source Sans 3","Source Sans Pro","Lato","Segoe UI",system-ui,sans-serif; color:var(--body); line-height:1.65; background:#fff; }
+  a { color:var(--teal); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  .wrap { max-width:720px; margin:0 auto; padding:0 1.4rem; }
+  nav { position:sticky; top:0; z-index:10; background:rgba(255,255,255,.92); backdrop-filter:blur(6px); border-bottom:1px solid var(--border); }
+  nav .wrap { display:flex; align-items:center; justify-content:space-between; height:56px; }
+  nav .brand a { font-weight:700; color:var(--dark); font-size:1.1rem; }
+  nav .links a { color:var(--role); font-weight:600; margin-left:1.4rem; }
+  nav .links a:hover { color:var(--teal); text-decoration:none; }
+  article { padding:2.5rem 0 3rem; }
+  .date { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:.85rem; color:var(--gray); }
+  article h1 { margin:.3rem 0 1.4rem; font-size:2.1rem; color:var(--dark); line-height:1.15; }
+  article .hero { max-width:100%; height:auto; border-radius:8px; border:1px solid var(--border); margin:0 0 1.6rem; display:block; }
+  article h2 { margin:2rem 0 .6rem; font-size:1.4rem; color:var(--dark); }
+  article p { margin:0 0 1rem; }
+  article code { background:var(--card); border:1px solid var(--border); border-radius:4px; padding:.05rem .35rem; font-size:.85rem; color:var(--dark); }
+  .back { display:inline-block; margin-top:2rem; font-weight:600; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <span class="brand"><a href="../index.html">MJH</a></span>
+    <span class="links">
+      <a href="../resume_short.html">Resume</a>
+      <a href="../blog.html">Blog</a>
+      <a href="../index.html#about">About</a>
+    </span>
+  </div>
+</nav>
+
+<div class="wrap">
+  <article>
+    <span class="date">2026-07-16</span>
+    <h1>Hello, world</h1>
+
+    <!-- ponytail: one image per post — drop a file in /images and point src here -->
+    <img class="hero" src="../images/hello-world.jpg" alt="Hello, world">
+
+    <p>
+      This blog is three hand-written HTML files and no build step. No generator,
+      no Node, no CI to publish a paragraph. Writing a post means copying this file,
+      changing the words, and adding one <code>&lt;li&gt;</code> to <code>blog.html</code>.
+    </p>
+
+    <h2>Why so plain</h2>
+    <p>
+      Every static-site generator I've run eventually needed feeding: a broken theme
+      after an upgrade, a plugin that stopped building, a lockfile that drifted. For a
+      handful of posts that cost is bigger than the posts. When the count of posts
+      outgrows my patience for hand-editing an index, I'll switch to something like
+      Zola or mdBook. Not before.
+    </p>
+
+    <p>That's the whole system. It fits in your head, which is the point.</p>
+
+    <a class="back" href="../blog.html">&larr; Back to blog</a>
+  </article>
+</div>
+</body>
+</html>

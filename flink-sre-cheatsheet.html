@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Apache Flink SRE Cheatsheet — 2.3</title>
+<style>
+@page { size: A4; margin: 14mm; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { padding: 6mm; }
+@media print { body { padding: 0; } }
+body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.5pt; line-height: 1.28; color: #000; background: #fff; }
+h1 { font-size: 15pt; margin: 0 0 2pt 0; }
+h2 { font-size: 11pt; margin: 12pt 0 4pt 0; border-bottom: 1.2pt solid #000; padding-bottom: 1pt; page-break-after: avoid; }
+h3 { font-size: 9.2pt; margin: 8pt 0 2pt 0; page-break-after: avoid; }
+p { margin: 2pt 0; }
+.meta { font-size: 8pt; color: #444; margin: 0 0 4pt 0; }
+.meta strong { color: #000; }
+code, kbd, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+table { width: 100%; border-collapse: collapse; margin: 3pt 0 5pt 0; table-layout: fixed; }
+th, td { border: 0.4pt solid #999; padding: 1.6pt 3pt; text-align: left; vertical-align: top; font-size: 7.6pt; word-wrap: break-word; overflow-wrap: anywhere; }
+th { background: #e8e8e8; font-weight: bold; }
+td.cmd, td.cmd code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 7.3pt; }
+td code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 7.3pt; }
+.col-cmd { width: 42%; }
+.col-desc { width: 58%; }
+.tips p { margin: 2.5pt 0; font-size: 8pt; }
+.note { font-size: 7.6pt; color: #333; }
+hr { border: 0; border-top: 0.4pt solid #ccc; margin: 4pt 0; }
+.incident { margin: 4pt 0 6pt 0; page-break-inside: avoid; }
+.incident p { font-size: 8pt; }
+.legend { font-size: 7.5pt; color: #333; margin-top: 2pt; }
+h2, h3 { page-break-inside: avoid; }
+table, tr { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+<h1>Apache Flink — Senior SRE Cheatsheet</h1>
+<p class="meta"><strong>Pinned version: Apache Flink 2.3.0</strong> (released 2026-06-25, latest stable at flink.apache.org/downloads). Companion projects at their own latest stable: Flink Kubernetes Operator 1.15.0, Flink CDC 3.6.0, Flink ML 2.3.0. Flink 1.20 is the maintained LTS line for teams not yet on the 2.x major — most production fleets today are still 1.20.x, not 2.3; deltas from 1.x are called out inline. <strong>CLI prefix:</strong> <code>./bin/flink &lt;action&gt; -t &lt;target&gt; ...</code> where target ∈ <code>local|remote|yarn-session|yarn-application|kubernetes-session|kubernetes-application</code>. <strong>REST prefix:</strong> <code>curl &lt;jm-host&gt;:8081/...</code> (default JobManager Web UI/REST port). Default ports: JobManager REST/UI <strong>8081</strong>, Prometheus reporter <strong>9249</strong>, ZooKeeper client (external, HA) <strong>2181</strong>. Since Flink 2.0: <code>flink-conf.yaml</code> removed, replaced by <code>conf/config.yaml</code>; Per-Job deployment mode, legacy DataSet API, and Scala DataStream/DataSet APIs removed.</p>
+<p class="legend"><strong>Placeholders:</strong> <code>&lt;job-id&gt;</code> <code>&lt;vertex-id&gt;</code> <code>&lt;checkpoint-id&gt;</code> <code>&lt;savepoint-path&gt;</code> <code>&lt;target-dir&gt;</code> <code>&lt;jar-file&gt;</code> <code>&lt;taskmanager-id&gt;</code>. <strong>Sources consulted:</strong> nightlies.apache.org/flink (docs-stable = 2.3, plus versioned 1.13/1.15/1.17/1.20 pages for deltas), flink.apache.org release/blog posts, Flink Kubernetes Operator docs, Apache/Confluent/Ververica engineering blogs, GitHub issues (apache/flink, apache/hudi), CNCF landscape. Items not directly verifiable against a primary source are marked <strong>⚠ unverified</strong> rather than stated as fact.</p>
+
+<!-- ============================ SECTION 1 ============================ -->
+<h2>1. Components</h2>
+
+<h3>Control plane &amp; coordination</h3>
+<p><strong>Dispatcher</strong> — JobManager-process component exposing the REST/submission interface and Web UI; spawns one JobMaster per submitted job.</p>
+<p><strong>ResourceManager</strong> — de-/allocates task slots, the unit of resource scheduling; pluggable per environment (Standalone, YARN, native Kubernetes) — in Standalone it can only hand out already-registered slots, it cannot spin up new TaskManagers itself.</p>
+<p><strong>JobMaster</strong> — one instance per running job, owns execution of that job's JobGraph, hosts the <strong>checkpoint coordinator</strong> (triggers barrier injection at sources, tracks per-task acknowledgment, becomes a documented bottleneck at very high TaskManager/operator counts).</p>
+<p><strong>HA services</strong> — one active JobManager, N standbys; leader election + address discovery + persistence of JobGraphs/checkpoint pointers so a new leader resumes without full restart. Two backends: <strong>ZooKeeper HA services</strong> (any deployment, needs external ZK quorum) or <strong>Kubernetes HA services</strong> (native, ConfigMap/Lease election, no ZK). Config: <code>high-availability.type</code>, <code>high-availability.storageDir</code>.</p>
+<p><strong>Blob server</strong> — JobManager-side distribution of large objects unfit for RPC (JARs, large serialized closures); TaskManager-side blob cache pulls on demand. <span class="note">⚠ unverified — summarized from indirect doc/config references, not a directly fetched primary page.</span></p>
+
+<h3>Data plane &amp; storage engine</h3>
+<p><strong>TaskManager / task slots</strong> — a slot is a fixed slice of a TaskManager's <em>memory</em>, explicitly not CPU-isolated; <code>taskmanager.numberOfTaskSlots</code> default 1. Cluster needs slots ≥ the job's <em>highest single-operator</em> parallelism, not the sum, because of slot sharing.</p>
+<p><strong>Network stack (credit-based flow control)</strong> — each <code>RemoteInputChannel</code> holds exclusive buffers as initial credit; <code>SingleInputGate</code> also owns a shared floating-buffer pool. Senders (<code>ResultSubPartition</code>) may never push a buffer without advertised downstream credit; a full <code>BufferPool</code> stops the read, propagating stall upstream hop-by-hop — this <em>is</em> backpressure, with no separate signaling message.</p>
+<p><strong>Operator chaining</strong> — consecutive operators fuse into one task/thread when parallelism matches, edges are forward-partitioned, and slot-sharing groups are compatible — eliminates inter-operator serialization/network cost.</p>
+<p><strong>StreamGraph → JobGraph → ExecutionGraph</strong> — program builds a StreamGraph (one node per transform); chaining/resource-group optimization compiles it to a JobGraph (what's submitted); the JobManager expands it to an ExecutionGraph (one JobVertex per operator/chain, N ExecutionVertices per JobVertex where N = parallelism) and deploys physical tasks onto slots.</p>
+<p><strong>State backends</strong> (<code>state.backend.type</code>): <code>hashmap</code> — state as live Java objects on-heap, fastest, bounded by heap/GC budget; <code>rocksdb</code> (EmbeddedRocksDBStateBackend) — serialized bytes in embedded RocksDB, max 2³¹ bytes per KV, always-async snapshots, supports incremental checkpoints; <code>forst</code> — experimental LSM store supporting remote/disaggregated state on HDFS/S3, async-incremental only, does <em>not</em> support canonical savepoints, full snapshots, changelog, or file-merging checkpoints.</p>
+<p><strong>Keyed vs operator state</strong> — keyed state (<code>ValueState</code>/<code>ListState</code>/<code>ReducingState</code>/<code>AggregatingState</code>/<code>MapState</code>) scoped per key on a <code>KeyedStream</code>; operator state bound to one parallel instance (source/sink connectors), redistributed on rescale via even-split or union (full-list-to-every-instance, e.g. Kafka offsets).</p>
+<p><strong>RocksDB internals</strong> — LSM tree: writes land in an in-memory memtable, flush to an immutable sorted SSTable on disk, background compaction merges/dedupes/GCs superseded files. Incremental checkpoints upload only new/changed local SST files since the last checkpoint and lean on RocksDB's own compaction so retained-checkpoint history doesn't grow unbounded — at the cost of write amplification from re-uploading compacted files.</p>
+
+<h3>Placement &amp; routing state</h3>
+<p><strong>Slot sharing groups</strong> — a <code>SlotSharingGroup</code> attached per JobVertex lets one slot hold one parallel instance of every operator in the group/chain — this is why max-parallelism-many slots suffice for a whole job.</p>
+<p><strong>Key groups / max parallelism</strong> — keyed state is bucketed into a fixed number of key groups (hash of key mod <code>maxParallelism</code>); rescale redistributes whole key groups, never re-hashes individual keys. Default <code>maxParallelism</code> (if unset) ≈ <code>operatorParallelism + operatorParallelism/2</code>, clamped to [128, 32768] — must be set deliberately before first prod deploy since raising it later is not a safe in-place operation.</p>
+<p><strong>Default Scheduler vs Adaptive Scheduler</strong> — Default: parallelism fixed at submission. Adaptive: rescales to currently-available slots at runtime via <strong>declarative resource management</strong> (JobMaster declares desired resources to the ResourceManager; slot changes trigger auto-rescale from the latest checkpoint, no manual savepoint-and-resubmit) and degrades gracefully — not fatally — on TaskManager loss.</p>
+<p><strong>Reactive Mode</strong> — Adaptive Scheduler configuration for single-job Application Mode clusters that treats configured parallelism as effectively unbounded; add/remove TaskManagers externally (driven by your own signal — lag, CPU) and Flink auto-rescales from checkpoint.</p>
+<p><strong>Deployment modes</strong> — <strong>Application Mode</strong> (dedicated cluster per app, <code>main()</code> runs on the JobManager, resource-isolated) and <strong>Session Mode</strong> (shared cluster, apps compete for resources, blast-radius tradeoff reversed vs Application Mode). <strong>Per-Job Mode was deprecated in 1.15 and fully removed in 2.0</strong> — its replacement path is Application Mode.</p>
+<p><strong>Kubernetes placement</strong> — Native (Flink's own ResourceManager talks directly to the K8s API to launch/kill TaskManager pods) vs Standalone-on-K8s (static pod specs, no dynamic negotiation) vs the <strong>Flink Kubernetes Operator</strong> (CRD-layered lifecycle management plus a built-in <strong>Job Autoscaler</strong> on top of native mode).</p>
+
+<h3>Runtime resource internals</h3>
+<p><strong>TaskManager memory model</strong> (<code>taskmanager.memory.*</code>) — JVM Heap = Framework heap (<code>framework.heap.size</code>) + Task heap (<code>task.heap.size</code>); off-heap = Framework off-heap + Task off-heap (<code>*.off-heap.size</code>); <strong>Managed memory</strong> (<code>managed.size</code> / <code>managed.fraction</code>, default fraction 0.4) backs RocksDB + batch sort/hash + Python UDFs; <strong>Network memory</strong> (<code>network.min</code>/<code>.max</code>/<code>.fraction</code>, default fraction 0.1, min 64MB) backs the credit-based buffer pools; plus JVM Metaspace and JVM Overhead outside Flink-managed memory. Entry points: <code>taskmanager.memory.process.size</code> (total container size) or <code>taskmanager.memory.flink.size</code>.</p>
+<p><strong>Backpressure detection</strong> — no separate protocol; judged from output-buffer availability. Every subtask exposes three time-fraction metrics summing to ~1000ms: <code>busyTimeMsPerSecond</code>, <code>backPressuredTimeMsPerSecond</code>, <code>idleTimeMsPerSecond</code>. Status thresholds: OK 0–10% backpressured, LOW 10–50%, HIGH 50–100%. WebUI color-codes the job graph (blue=idle, red=busy, black=backpressured).</p>
+<p><strong>Buffer debloating</strong> (<code>taskmanager.network.memory.buffer-debloat.enabled</code>, default <strong>false</strong>) — dynamically shrinks in-flight buffered data to a target consumption time based on measured throughput; shrinks unaligned-checkpoint size and speeds recovery, also helps aligned-checkpoint latency. Docs recommend it over manual buffer tuning, yet it ships off by default.</p>
+
+<h3>Ingest, storage substrate &amp; recovery</h3>
+<p><strong>Checkpoint barriers / alignment</strong> — Chandy-Lamport-style async snapshot: barriers injected at sources flow with the stream; an operator snapshots only once a barrier has arrived on <em>every</em> input (alignment), adding latency proportional to how backpressured the slowest input is.</p>
+<p><strong>Aligned vs unaligned checkpoints</strong> — unaligned lets the barrier overtake in-flight buffered records, which become part of the persisted checkpoint state instead of blocking the barrier; checkpoint duration becomes near-independent of backpressure, at the cost of larger checkpoints and more checkpoint-storage I/O. Flip trigger: <code>execution.checkpointing.unaligned: true</code>, or <code>execution.checkpointing.aligned-checkpoint-timeout</code> auto-flips mid-flight.</p>
+<p><strong>Checkpoints vs savepoints</strong> — checkpoints: Flink-owned full lifecycle, state-backend-native format, may be incremental, auto-deleted on job termination unless externalized-retention is set; optimized for fast recovery assuming unchanged code. Savepoints: user-owned, manually triggered, traditionally canonical (backend-independent) format (native-format option exists since 1.15 trading portability for speed), <em>never</em> auto-deleted by Flink; only canonical savepoints support cross-backend restore, State Processor API access, and schema evolution.</p>
+<p><strong>Two-phase commit sinks (Sink V2)</strong> — <code>TwoPhaseCommittingSink</code> splits into a SinkWriter (pre-commits "committables" on checkpoint) and a Committer (finalizes them only after <code>notifyCheckpointComplete</code> fires for that checkpoint). KafkaSink: <code>KafkaWriter</code> writes inside an open Kafka transaction, <code>KafkaCommitter</code> commits it only once the enclosing Flink checkpoint is durable — this is the mechanism behind end-to-end exactly-once.</p>
+<p><strong>Watermarks</strong> — periodic (<code>onEvent()</code> buffers, <code>onPeriodicEmit()</code> fires per <code>ExecutionConfig.setAutoWatermarkInterval()</code>) or punctuated (fires off marker events) generators. Multi-input operators advance watermark to the <em>minimum across all inputs</em> — the direct cause of idle-source stalls. <code>.withIdleness(Duration)</code> excludes a quiet input from that minimum.</p>
+<p><strong>Allowed lateness / side outputs</strong> — default allowed lateness is zero (late data dropped at watermark-pass). <code>.allowedLateness(Time)</code> keeps a window open past trigger, re-firing per late arrival (callers must dedupe). <code>.sideOutputLateData(OutputTag)</code> routes still-too-late elements to a side output instead of silent drop.</p>
+<p><strong>State Processor API</strong> — offline batch reading/writing/bootstrapping of savepoint state via DataStream/Table batch APIs; used for state auditing, schema migration, and correcting corrupted state. Reading requires the operator's <code>uid</code> + state name + type info.</p>
+<p><strong>Durable filesystem plugins</strong> — checkpoints/savepoints persist to S3/HDFS/GCS/Azure Blob via <code>flink-s3-fs-hadoop</code> / <code>flink-s3-fs-presto</code> plugins (both register on <code>s3://</code>; mixing them under one scheme is undefined — use explicit <code>s3a://</code>/<code>s3p://</code>). A Hadoop-free <code>flink-s3-fs-native</code> shipped experimental in 2.3 specifically to remove this conflict.</p>
+
+<h3>Lifecycle &amp; platform services</h3>
+<p><strong>config.yaml</strong> — since Flink 2.0, <code>conf/config.yaml</code> is the only supported cluster config file (<code>flink-conf.yaml</code> no longer read), standard YAML supporting both nested and flattened key styles.</p>
+<p><strong>Config precedence</strong> — <code>-D&lt;key&gt;=&lt;value&gt;</code> dynamic properties on CLI submission override cluster-wide <code>config.yaml</code> for that job; on Session clusters CLI/job config affects only that job's execution parameters, never the shared cluster config; Application/per-job-dedicated clusters can push a fuller config via <code>-D</code> since the cluster serves only that job.</p>
+<p><strong>State TTL</strong> — update scope <code>OnCreateAndWrite</code> (default) or <code>OnReadAndWrite</code>; visibility <code>NeverReturnExpired</code> (default) or <code>ReturnExpiredIfNotCleanedUp</code>; cleanup via explicit-on-read, incremental background cleanup, RocksDB compaction filter, or full-snapshot cleanup.</p>
+<p><strong>Flink Kubernetes Operator CRDs</strong> — <code>FlinkDeployment</code>, <code>FlinkSessionJob</code>, <code>FlinkStateSnapshot</code> (API <code>flink.apache.org/v1beta1</code>) as the bundled lifecycle-automation layer: savepoint-triggered upgrades, HA, and (since 1.14) native Blue/Green deployments.</p>
+<p><strong>SQL Gateway</strong> — <code>bin/sql-gateway.sh {start|start-foreground|stop}</code>, a multi-client concurrent SQL execution service exposing a REST endpoint and a HiveServer2-compatible endpoint. <span class="note">⚠ unverified exact default port/flag names — 2.3 doc page fetch was unreliable; verify against <code>docs/dev/table/sql-gateway/</code> before quoting exact values.</span></p>
+<p><strong>Security</strong> — SSL/TLS for internal (RPC/data-plane) and external (REST/UI) traffic via <code>security.ssl.*</code>; Kerberos delegation-token framework for authenticating to secured HDFS/Kafka/YARN. <span class="note">⚠ unverified — not independently confirmed against 2.3 docs in this research pass; treat exact key names as indicative, verify before use.</span></p>
+
+<!-- ============================ SECTION 2 ============================ -->
+<h2>2. Command Reference</h2>
+<p class="note">Global: every <code>bin/flink</code> action accepts <code>-t/--target &lt;target&gt;</code> and repeatable <code>-D&lt;key&gt;=&lt;value&gt;</code> dynamic properties. Every REST call assumes <code>curl &lt;jm-host&gt;:8081/...</code>.</p>
+
+<h3>Core verbs — <code>bin/flink</code> CLI</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>flink run [-d] [-p N] [-s :savepointPath] [-c com.Main] [-C file:///jar] [-t target] &lt;jar&gt; [args]</code></td><td>Submit a job. <code>-d</code> detached, <code>-p</code> parallelism, <code>-c</code> main class, <code>-C</code> extra classpath (repeatable), <code>-s</code> resume from savepoint (add <code>-n/--allowNonRestoredState</code> to skip unmatched state, <code>-claimMode CLAIM|NO_CLAIM|LEGACY</code> for ownership semantics).</td></tr>
+<tr><td class="cmd"><code>flink run-application -t yarn-application|kubernetes-application &lt;jar&gt;</code></td><td>Submit directly in Application Mode — <code>main()</code> runs on the cluster entrypoint, not the client. Recommended for prod single-job clusters.</td></tr>
+<tr><td class="cmd"><code>flink info &lt;jar&gt; [args]</code></td><td>Print the optimized JobGraph as JSON — dry-run, non-submitting, safe.</td></tr>
+<tr><td class="cmd"><code>flink list [-t target] [-D...]</code></td><td>List running/scheduled jobs. <span class="note">⚠ exact <code>-r/-s/-a</code> filter flags not verified verbatim for 2.3.</span></td></tr>
+<tr><td class="cmd"><code>flink savepoint :jobId [:targetDir] [--type native|canonical]</code></td><td>Trigger a savepoint of a running job without stopping it. Safe, non-cancelling.</td></tr>
+<tr><td class="cmd"><code>flink savepoint --dispose :savepointPath</code></td><td><strong>Destructive</strong> — permanently deletes a savepoint from storage; Flink never auto-deletes savepoints, so this is the only cleanup path.</td></tr>
+<tr><td class="cmd"><code>flink checkpoint :jobId [--full]</code></td><td><strong>New in Flink 2.x</strong> — manually trigger a checkpoint via CLI (previously REST-only). <code>--full</code> forces non-incremental.</td></tr>
+<tr><td class="cmd"><code>flink cancel :jobId [-t target]</code></td><td><strong>Destructive</strong> — immediate termination, no savepoint taken and no guaranteed final state snapshot. Deprecated: <code>cancel --withSavepoint</code> (use <code>stop</code> instead).</td></tr>
+<tr><td class="cmd"><code>flink stop [--type native|canonical] [--savepointPath :dir] [-d/--drain] :jobId</code></td><td>Graceful stop: takes a final savepoint, lets sinks flush/drain in-flight, then terminates cleanly for later resumption. <code>--drain</code> emits MAX_WATERMARK — flushes all windows, <strong>not resumable with new data</strong>, use only for a genuinely final stop.</td></tr>
+</tbody></table>
+<p class="note"><code>cancel</code> vs <code>stop</code>: <code>cancel</code> is force-terminate with no state guarantee; <code>stop</code> is the safe operational choice for planned maintenance/upgrades (savepoint + graceful drain).</p>
+
+<h3>SQL Client &amp; SQL Gateway</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>sql-client.sh</code> / <code>sql-client.sh embedded</code></td><td>Launch the SQL Client locally. Flags: <code>-f/--file</code> (run script non-interactively), <code>-i/--init</code>, <code>-j/--jar</code> (UDF jar), <code>-l/--library</code>, <code>-D&lt;k&gt;=&lt;v&gt;</code>.</td></tr>
+<tr><td class="cmd"><code>sql-client.sh gateway --endpoint &lt;addr&gt;</code></td><td>Launch SQL Client against a remote SQL Gateway session instead of an embedded local one.</td></tr>
+<tr><td class="cmd"><code>SHOW JOBS;</code></td><td>List jobs known to the session's cluster (SQL-level).</td></tr>
+<tr><td class="cmd"><code>STOP JOB '&lt;job_id&gt;' WITH SAVEPOINT;</code></td><td>Graceful stop-with-savepoint from SQL — mirrors CLI <code>stop</code>.</td></tr>
+<tr><td class="cmd"><code>SET 'execution.state-recovery.path' = '/path/to/savepoint';</code></td><td>Set savepoint path to resume from before the next SQL job submission.</td></tr>
+<tr><td class="cmd"><code>SET 'table.dml-sync' = 'true';</code></td><td>Block until a DML statement's job finishes — useful for scripted ops.</td></tr>
+<tr><td class="cmd"><code>sql-gateway.sh {start|start-foreground|stop}</code></td><td>Start/stop the SQL Gateway service (multi-client SQL execution + REST/HiveServer2 endpoints). <span class="note">⚠ default port/flags unverified this pass.</span></td></tr>
+</tbody></table>
+
+<h3>REST API — Maintenance</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>POST /jars/upload</code></td><td>Upload a job JAR.</td></tr>
+<tr><td class="cmd"><code>POST /jars/:jarid/run</code></td><td>Submit a job from an uploaded JAR.</td></tr>
+<tr><td class="cmd"><code>DELETE /jars/:jarid</code></td><td><strong>Destructive</strong> — remove an uploaded JAR.</td></tr>
+<tr><td class="cmd"><code>POST /jobs/:jobid/checkpoints</code></td><td>Manually trigger a checkpoint (REST equivalent of <code>flink checkpoint</code>); body can specify full/incremental.</td></tr>
+<tr><td class="cmd"><code>POST /jobs/:jobid/savepoints {"target-directory":"...","cancel-job":false}</code></td><td>Trigger a savepoint (async, returns a trigger-id). <code>cancel-job:true</code> makes this <strong>destructive</strong> (savepoint-then-cancel).</td></tr>
+<tr><td class="cmd"><code>PUT /jobs/:jobid/resource-requirements</code></td><td>Re-declare per-vertex parallelism bounds to trigger in-place rescale without a full restart (Flink 1.18+) — the mechanism behind the Kubernetes Operator autoscaler and WebUI scale buttons.</td></tr>
+<tr><td class="cmd"><code>PATCH /jobs/:jobid</code></td><td><strong>Destructive</strong> — cancel/terminate a job via REST.</td></tr>
+</tbody></table>
+
+<h3>REST API — Observability</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>GET /overview</code></td><td>Cluster overview — versions, TaskManager/slot/job counts.</td></tr>
+<tr><td class="cmd"><code>GET /jobmanager/config</code></td><td>Effective JobManager/cluster configuration.</td></tr>
+<tr><td class="cmd"><code>GET /jobs</code> · <code>/jobs/overview</code></td><td>List all jobs with state.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid</code></td><td>Full job detail — name, state, vertices, timestamps.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/vertices/:vertexid</code></td><td>Job vertex (operator) detail.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/vertices/:vertexid/subtasks/:n</code></td><td>Subtask detail.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/exceptions</code></td><td>Exception history for a job — primary triage endpoint.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/checkpoints</code></td><td>Checkpoint statistics/history.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/checkpoints/config</code></td><td>Checkpointing configuration — interval, timeout, mode.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/checkpoints/details/:checkpointid</code></td><td>Detail of one checkpoint (sync/async/alignment duration).</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/savepoints/:triggerid</code></td><td>Poll async savepoint status → COMPLETED/IN_PROGRESS/failure + path.</td></tr>
+<tr><td class="cmd"><code>GET /taskmanagers</code> · <code>/taskmanagers/:id</code></td><td>List / detail TaskManagers.</td></tr>
+<tr><td class="cmd"><code>GET /jobmanager/logs</code> · <code>/taskmanagers/:id/logs</code></td><td>List available log files.</td></tr>
+<tr><td class="cmd"><code>GET /jobmanager/thread-dump</code></td><td>JobManager thread dump.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/metrics</code> · <code>/jobmanager/metrics</code></td><td>Aggregated job / JobManager metrics.</td></tr>
+</tbody></table>
+
+<h3>REST API — Disaster / Recovery</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>POST /jobs/:jobid/savepoints {"cancel-job":true}</code></td><td><strong>Destructive</strong> — REST-level stop-with-savepoint (drain, then cancel).</td></tr>
+<tr><td class="cmd"><code>flink run -s :savepointPath -n</code></td><td>Restore into a changed job graph, dropping unmatched state (<code>allowNonRestoredState</code>) — use when an operator was intentionally removed.</td></tr>
+<tr><td class="cmd"><code>flink savepoint --dispose :savepointPath</code></td><td><strong>Destructive</strong> — irreversible deletion of savepoint state on disk.</td></tr>
+<tr><td class="cmd"><code>jobmanager.sh stop-all</code></td><td><strong>Destructive to cluster availability</strong> — stops JobManager instances cluster-wide (standalone).</td></tr>
+</tbody></table>
+
+<h3>Kubernetes Operator — <code>kubectl</code> on FlinkDeployment / FlinkSessionJob</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>kubectl apply -f flinkdeployment.yaml</code></td><td>Deploy/update a <code>FlinkDeployment</code> or <code>FlinkSessionJob</code> CR — the operator reconciles state.</td></tr>
+<tr><td class="cmd"><code>spec.job.savepointTriggerNonce: &lt;int&gt;</code></td><td>Set to any new non-null value to trigger a savepoint of the running job (edit-and-reconcile pattern, not a kubectl subcommand).</td></tr>
+<tr><td class="cmd"><code>spec.job.checkpointTriggerNonce: &lt;int&gt;</code></td><td>Same pattern to manually trigger a checkpoint.</td></tr>
+<tr><td class="cmd"><code>spec.job.savepointRedeployNonce: &lt;int&gt;</code></td><td>Trigger a full redeploy of the job from its savepoint path.</td></tr>
+<tr><td class="cmd"><code>spec.job.state: suspended</code></td><td>Controlled stop of the job via CR edit (set back to <code>running</code> to resume).</td></tr>
+<tr><td class="cmd"><code>spec.restartNonce: &lt;int&gt;</code></td><td>Force a manual restart via CR edit.</td></tr>
+<tr><td class="cmd"><code>spec.job.upgradeMode: stateless</code></td><td><strong>Destructive</strong> — redeploy with empty state, no savepoint taken.</td></tr>
+<tr><td class="cmd"><code>spec.job.upgradeMode: last-state</code></td><td>Fast upgrade using the latest retained checkpoint/savepoint — relies on HA-backed retained checkpoints.</td></tr>
+<tr><td class="cmd"><code>spec.job.upgradeMode: savepoint</code></td><td>Safest — takes a savepoint of the running job, shuts it down cleanly, restores from it.</td></tr>
+</tbody></table>
+
+<h3>Standalone cluster scripts (binary-by-binary)</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>start-cluster.sh</code> / <code>stop-cluster.sh</code></td><td>Start/stop the whole standalone cluster per <code>conf/workers</code> + <code>conf/masters</code>.</td></tr>
+<tr><td class="cmd"><code>jobmanager.sh {start|start-foreground|stop|stop-all}</code></td><td><code>start-foreground</code> logs to stdout (for supervisord/systemd). <code>stop-all</code> is destructive to cluster-wide JM availability.</td></tr>
+<tr><td class="cmd"><code>taskmanager.sh {start|start-foreground|stop|stop-all}</code></td><td>Same semantics for TaskManagers; stopping reduces/eliminates slot capacity — running jobs fail over or fail depending on HA/checkpoint config.</td></tr>
+<tr><td class="cmd"><code>standalone-job.sh start --job-classname &lt;FQCN&gt;</code></td><td>Application Mode entrypoint for standalone (job-mode) clusters.</td></tr>
+</tbody></table>
+
+<!-- ============================ SECTION 3 ============================ -->
+<h2>3. Deep Debugging</h2>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command / Technique</th><th>What it reveals / when to use</th></tr></thead>
+<tbody>
+<tr><td class="cmd">WebUI → Job → <code>Back Pressure</code> tab</td><td>Per-subtask OK/LOW/HIGH status from <code>backPressuredTimeMsPerSecond</code>; localizes which operator is the actual bottleneck vs which are merely stalled behind it.</td></tr>
+<tr><td class="cmd">WebUI → Job → <code>Checkpoints</code> → History/Details</td><td>Per-checkpoint Sync/Async/Alignment/Start-Delay/End-to-End duration breakdown — tells you whether alignment (backpressure), state snapshot (RocksDB/disk), or storage upload is the slow phase.</td></tr>
+<tr><td class="cmd"><code>GET /jobs/:jobid/exceptions</code></td><td>Root + task exception history — first stop for "why did this job restart."</td></tr>
+<tr><td class="cmd">WebUI → TaskManagers → instance → <code>Thread Dump</code></td><td>Stack trace snapshot without shell access to the container; confirmed REST path exists for JobManager (<code>/jobmanager/thread-dump</code>), TM equivalent via UI button. <span class="note">⚠ exact TM REST path unverified.</span></td></tr>
+<tr><td class="cmd">Metrics: <code>numRecordsIn/OutPerSecond</code>, <code>currentInputWatermark</code></td><td>Throughput and event-time lag per operator/subtask.</td></tr>
+<tr><td class="cmd">Metrics: <code>busyTimeMsPerSecond</code> / <code>backPressuredTimeMsPerSecond</code> / <code>idleTimeMsPerSecond</code></td><td>The three time-fractions the Back Pressure tab is built from — scrape directly for alerting.</td></tr>
+<tr><td class="cmd">Metrics: <code>inPoolUsage</code> / <code>outPoolUsage</code> (Shuffle.Netty scope)</td><td>Network buffer pool saturation — precursor to "Insufficient number of network buffers."</td></tr>
+<tr><td class="cmd">RocksDB native metrics: <code>state.backend.rocksdb.metrics.num-running-compactions</code> etc.</td><td>Compaction/flush/memtable pressure — disabled by default because enabling costs throughput; turn on only while actively debugging.</td></tr>
+<tr><td class="cmd">Reporters: PrometheusReporter (9249) / JMXReporter</td><td>Standard scrape paths for all of the above into Prometheus/Grafana or JMX tooling.</td></tr>
+<tr><td class="cmd"><code>conf/log4j.properties</code> + <code>monitorInterval=30</code></td><td>Hot-reloads log4j2 config every 30s where the file is mutable (e.g. K8s ConfigMap) — does not work on YARN. Runtime log-level-change REST API was proposed (FLIP-210) and <strong>rejected</strong> by the community; use JMX MBeans directly for live level changes instead.</td></tr>
+<tr><td class="cmd">JVM: <code>jstack</code>, <code>jmap</code>, GC logging (<code>-Xlog:gc</code>/<code>-Xloggc</code>)</td><td>Standard JVM introspection on the TM/JM process; G1GC with tuned <code>-XX:MaxGCPauseMillis</code> gives materially more stable streaming latencies than the JVM default collector.</td></tr>
+<tr><td class="cmd">OS: <code>strace -p &lt;pid&gt;</code></td><td>Catches a TaskManager stalled on syscalls — e.g. blocked disk I/O to a RocksDB local dir. <span class="note">General SRE practice, not Flink-doc-sourced.</span></td></tr>
+<tr><td class="cmd">OS: <code>perf top</code> / <code>perf record -p &lt;pid&gt;</code></td><td>CPU flame graph on a hot TaskManager. <span class="note">General practice.</span></td></tr>
+<tr><td class="cmd">OS: <code>tcpdump</code> / <code>ss -tnp</code></td><td>Network stalls between TM↔TM shuffle traffic or TM↔external sink/source. <span class="note">General practice.</span></td></tr>
+<tr><td class="cmd">SQL: <code>EXPLAIN ...</code> / <code>table.explain()</code></td><td>Logical + optimized physical plan — spot unexpected exchange/shuffle operators or upsert-key changes.</td></tr>
+<tr><td class="cmd">State Processor API — <code>SavepointReader#readListState</code> etc.</td><td>Offline batch inspection of savepoint state content for auditing/troubleshooting without touching the live job.</td></tr>
+</tbody></table>
+<div class="tips">
+<p><strong>Alignment vs sync/async duration</strong> — a checkpoint dominated by alignment time means backpressure/network is the problem; dominated by sync/async duration means the state backend or checkpoint storage (S3/HDFS) is the problem. Different fixes.</p>
+<p><strong>Enable RocksDB metrics only while debugging</strong> — they're off by default specifically because always-on native metric collection measurably costs throughput.</p>
+</div>
+
+<!-- ============================ SECTION 4 ============================ -->
+<h2>4. Top Incidents</h2>
+<p><strong>Walk any incident out loud:</strong> observe (which alert/metric fired — checkpoint failure? backpressure? OOM?) → localize control-plane (JobManager/HA/scheduling) vs data-plane (TaskManager/state/network) → let the tool name the cause (Back Pressure tab, checkpoint detail breakdown, exception history, memory-troubleshooting table) → stabilize (raise a timeout, restart, fail over) then fix the root cause → name the durable prevention (uid discipline, TTL, disk/memory sizing, idleness config).</p>
+
+<div class="incident">
+<h3>1. Checkpoint timeouts/failures → restart loop</h3>
+<p><strong>Symptom:</strong> checkpoints repeatedly expire past <code>execution.checkpointing.timeout</code> (default 10 min); job cycles through restart-from-last-checkpoint.</p>
+<p><strong>Root cause:</strong> state too large for the interval, skewed state across keys, a slow/overloaded sink stalling barrier alignment, or a stuck external checkpoint-storage system (S3/HDFS) on the async persist phase.</p>
+<p><strong>Fix:</strong> read the checkpoint detail breakdown to see which subtask/phase is slow; watch <code>lastCheckpointDuration</code> and <code>numberOfFailedCheckpoints</code>; switch to unaligned checkpoints if alignment dominates. <strong>Prevent:</strong> fix root skew/backpressure rather than only raising the timeout; set State TTL to bound unbounded state growth.</p>
+</div>
+
+<div class="incident">
+<h3>2. Backpressure cascading from a slow sink</h3>
+<p><strong>Symptom:</strong> upstream subtasks show HIGH backpressure status even though CPU is idle; checkpoint alignment time balloons; end-to-end latency climbs.</p>
+<p><strong>Root cause:</strong> downstream sink (DB, slow HTTP endpoint, undersized Kafka partition count) can't keep pace; output buffer pool exhausts (<code>outPoolUsage</code> near 100%), which blocks upstream via credit-based flow control.</p>
+<p><strong>Fix:</strong> localize with the Back Pressure tab + per-operator busy/backpressured metrics; check sink-side metrics/logs; scale sink parallelism or batch/async the I/O. <strong>Prevent:</strong> consider unaligned checkpoints so backpressure doesn't also stall checkpointing.</p>
+</div>
+
+<div class="incident">
+<h3>3. RocksDB state growth / disk exhaustion on TaskManager local dir</h3>
+<p><strong>Symptom:</strong> TaskManager crashes, or checkpoints fail with disk-full errors on the <code>state.backend.rocksdb.localdir</code> volume.</p>
+<p><strong>Root cause:</strong> unbounded state growth (no TTL), compaction lag leaving too many/too-large SST files, local disk under-provisioned for peak (not average) state.</p>
+<p><strong>Fix:</strong> monitor RocksDB compaction/mem-table metrics; set State TTL. <strong>Prevent:</strong> size local disk for peak state; the <code>ForStStateBackend</code> (remote state, local disk as cache) is a possible future mitigation but is explicitly not yet production-ready.</p>
+</div>
+
+<div class="incident">
+<h3>4. OOM on TaskManager (managed memory vs heap misconfiguration)</h3>
+<p><strong>Symptom:</strong> <code>OutOfMemoryError: Java heap space</code> / <code>: Direct buffer memory</code> / <code>: Metaspace</code>, or the container is killed for exceeding requested memory.</p>
+<p><strong>Root cause:</strong> heap sized too small for a managed-memory-heavy workload (or vice versa), off-heap network/RocksDB memory not accounted for, or a direct-memory leak in user code/a connector (documented case: Kafka connector direct-buffer OOM).</p>
+<p><strong>Fix:</strong> match the exception to its config key — heap → <code>taskmanager.memory.task.heap.size</code>, direct buffer → <code>task.off-heap.size</code>/<code>-XX:MaxDirectMemorySize</code>, metaspace → <code>jvm-metaspace.size</code>, container-exceeded → <code>jobmanager.memory.enable-jvm-direct-memory-limit</code> + <code>MALLOC_ARENA_MAX</code>. <strong>Prevent:</strong> size memory fractions against the actual state backend and connector footprint, not just heap.</p>
+</div>
+
+<div class="incident">
+<h3>5. JobManager HA failover / ZooKeeper session loss</h3>
+<p><strong>Symptom:</strong> all tasks cancelled and the job restarts with no visible code/infra failure; logs show leadership revoked.</p>
+<p><strong>Root cause:</strong> ZK session/connection lost between active JobManager and ZooKeeper (network blip, ZK GC pause, quorum loss) → leadership revoked → TaskManagers disconnected → standby JM takes over.</p>
+<p><strong>Fix:</strong> streaming jobs recover automatically from the last checkpoint (batch jobs restart from scratch — no checkpoints exist for them). <strong>Prevent:</strong> monitor ZK quorum health and the JM↔ZK network path independently of Flink; Kubernetes-native HA sidesteps this specific failure mode entirely since it has no external ZK dependency.</p>
+</div>
+
+<div class="incident">
+<h3>6. Watermark stall from an idle partition/source</h3>
+<p><strong>Symptom:</strong> windows never fire / results stop on one path while data flows elsewhere; <code>currentInputWatermark</code> frozen on some subtasks.</p>
+<p><strong>Root cause:</strong> Flink advances watermark as the minimum across all inputs; one idle Kafka partition (or a subtask with parallelism &gt; partition count) holds back event-time progress for the whole downstream pipeline.</p>
+<p><strong>Fix:</strong> configure <code>WatermarkStrategy.withIdleness(Duration)</code> so idle inputs are excluded from the min-watermark calc. <strong>Prevent:</strong> keep source parallelism ≤ partition count; note idleness alone won't force the very last window containing the final event to close.</p>
+</div>
+
+<div class="incident">
+<h3>7. Savepoint incompatibility after upgrade / missing operator uids</h3>
+<p><strong>Symptom:</strong> restore fails — "cannot map checkpoint/savepoint state for operator [ID] to the new program, because the operator is not available in the new program."</p>
+<p><strong>Root cause:</strong> operator UIDs weren't explicitly set with <code>.uid(...)</code>, so Flink's topology-hash-based auto-generated IDs shift on any graph change (even an unrelated stateless operator added elsewhere), or a non-deterministic UID source was baked in at construction time.</p>
+<p><strong>Fix:</strong> restore with <code>-n/--allowNonRestoredState</code> only if the dropped operator's state is genuinely no longer needed. <strong>Prevent:</strong> assign explicit stable <code>uid()</code>s to every stateful operator before first production deploy — non-negotiable.</p>
+</div>
+
+<div class="incident">
+<h3>8. Kafka exactly-once transaction ID collisions / transaction timeout</h3>
+<p><strong>Symptom:</strong> <code>ProducerFencedException</code> ("producer's epoch is no longer valid"), or transactions time out and abort.</p>
+<p><strong>Root cause:</strong> Flink's transactional-ID generator only guarantees uniqueness within a single job — multiple jobs/clusters sharing an ID prefix collide; separately, each checkpoint opens a new transaction, and if Kafka's <code>transaction.timeout.ms</code> (broker default 60s) is shorter than the actual checkpoint interval, in-flight transactions time out before commit.</p>
+<p><strong>Fix:</strong> give each job/cluster a distinct transactional-id prefix. <strong>Prevent:</strong> set <code>transaction.timeout.ms</code> comfortably above the checkpoint interval (commonly 15 min in practice); don't run unnecessarily short checkpoint intervals with EXACTLY_ONCE Kafka sinks.</p>
+</div>
+
+<div class="incident">
+<h3>9. Network buffer exhaustion</h3>
+<p><strong>Symptom:</strong> <code>IOException: Insufficient number of network buffers: required ..., but only ... available</code>.</p>
+<p><strong>Root cause:</strong> configured network memory too small for the job's parallelism × channel count — common at high parallelism or many-to-many shuffles, since required buffers scale with parallelism².</p>
+<p><strong>Fix:</strong> raise <code>taskmanager.memory.network.min</code>/<code>.max</code>/<code>.fraction</code> (bump fraction toward 0.2–0.3 for large jobs), or lower <code>taskmanager.memory.segment-size</code> below the 32KB default so more buffers fit the same budget. <strong>Prevent:</strong> enable buffer debloating instead of hand-tuning per-deployment buffer counts.</p>
+</div>
+
+<div class="incident">
+<h3>10. Skewed keys / single-subtask hotspotting</h3>
+<p><strong>Symptom:</strong> one subtask sustains 100% busy/backpressured while siblings idle; uneven per-subtask <code>numRecordsInPerSecond</code>.</p>
+<p><strong>Root cause:</strong> <code>keyBy()</code> on a low-cardinality or naturally skewed key (tenant, currency, one dominant Kafka partition) concentrates load on one physical subtask.</p>
+<p><strong>Fix:</strong> repartition on a higher-cardinality key when semantically valid; two-phase local-then-global aggregation to pre-reduce before the skewed key; key-salting for genuinely single-key hotspots; <code>rebalance()</code> when the imbalance is purely source-partition distribution, not business-key semantics. <strong>Prevent:</strong> profile key cardinality before choosing the partitioning key, not after.</p>
+</div>
+
+<!-- ============================ SECTION 5 ============================ -->
+<h2>5. Core Concepts &amp; Tradeoffs</h2>
+<table><colgroup><col class="col-cmd" style="width:30%"><col class="col-desc" style="width:70%"></colgroup>
+<thead><tr><th>Concept</th><th>How it works &amp; the tradeoff</th></tr></thead>
+<tbody>
+<tr><td>Exactly-once via barrier alignment</td><td>Chandy-Lamport-style async snapshot; an operator snapshots only once a barrier has arrived on every input. Alignment latency is proportional to how backpressured the slowest input is — normally a few ms, can spike badly under sustained backpressure. At-least-once skips alignment for lower latency at the cost of possible duplicate processing on restart.</td></tr>
+<tr><td>Heap vs RocksDB state backend</td><td>HashMap keeps live objects on-heap: fastest access, no (de)serialization, but bounded by JVM heap and adds GC pressure. RocksDB serializes every access to an off-heap LSM tree on disk: scales with disk not heap, avoids GC pressure, but pays serialization + I/O/compaction cost per access — meaningfully lower raw throughput for small/hot state. Pick RocksDB once state exceeds comfortable heap/GC budget, and budget managed memory for it explicitly.</td></tr>
+<tr><td>Event time vs processing time / out-of-order</td><td>Watermarks assert "no more events with timestamp &lt; T expected," driving window/timer firing despite out-of-order arrival. <code>BoundedOutOfOrdernessWatermarks</code> trades a fixed lateness bound for latency: bigger bound = more correctness on late data, more delay before windows fire.</td></tr>
+<tr><td>Backpressure propagation</td><td>Not a distinct signal — it's the credit-based flow-control system running in reverse: no free output buffer → sender told it has no credit → sender stalls → its own input buffers fill → propagates upstream hop-by-hop to the source, which throttles ingestion. Self-regulating, no explicit "slow down" message ever sent.</td></tr>
+<tr><td>Rescaling &amp; key groups</td><td>Keyed state is bucketed into a fixed number of key groups (hash of key mod <code>maxParallelism</code>) at job-graph build time; rescale redistributes whole key groups, never re-hashes individual keys. <code>maxParallelism</code> must be set before it's ever needed — raising it later requires a full state migration via the State Processor API, not a live operation.</td></tr>
+<tr><td>Unaligned checkpoints</td><td>Solves checkpoint stalls under sustained backpressure by letting barriers overtake in-flight buffers instead of waiting for alignment, decoupling checkpoint completion from pipeline throughput. Costs: in-flight buffers become persisted checkpoint state (bigger checkpoints), more storage I/O, incompatible with a concurrently-running savepoint, and it does not fix the underlying backpressure cause — end-to-end record latency stays high.</td></tr>
+<tr><td>End-to-end exactly-once via 2PC sinks</td><td>Requires the sink to support transactions Flink can hold open across a checkpoint interval and commit only on <code>notifyCheckpointComplete</code>. Concrete cost for Kafka: consumers must read with <code>read_committed</code> isolation, and end-to-end visibility latency becomes bounded by the checkpoint interval, not per-record processing — a 1-minute interval means data is visible roughly 1 minute late even though Flink "processed" it immediately.</td></tr>
+<tr><td>Main scaling bottlenecks</td><td>Two distinct ones: (1) the JobManager/checkpoint coordinator under very high TaskManager or operator counts — it absorbs all checkpoint-ack and keep-alive RPC traffic and coordinates key-group assignment on rescale; (2) RocksDB compaction stalls / state-backend I/O — when sync/async snapshot duration (not alignment) dominates checkpoint time, the state backend or checkpoint storage is the bottleneck, not the network. Network buffer exhaustion is a related but distinct throughput problem, not a hard scaling ceiling like the two above.</td></tr>
+<tr><td>Consistency/latency positioning</td><td>Flink is a single-cluster stream processor, not a partition-tolerant distributed store — a literal CAP-theorem framing doesn't map cleanly onto it (⚠ no official source frames it that way). The accurate tradeoff to state out loud is the checkpoint-interval triangle: shorter interval = less reprocessing on failure + more steady-state overhead; longer interval = cheaper steady state + more to replay on recovery — plus the separate exactly-once-vs-at-least-once dial on top of it.</td></tr>
+</tbody></table>
+
+<!-- ============================ SECTION 6 ============================ -->
+<h2>6. System Design &amp; Capacity Planning</h2>
+<table><colgroup><col class="col-cmd" style="width:26%"><col class="col-desc" style="width:74%"></colgroup>
+<thead><tr><th>Lever</th><th>Rule of thumb / math</th></tr></thead>
+<tbody>
+<tr><td>Parallelism / slot sizing</td><td><code>taskmanager.numberOfTaskSlots</code> default 1; docs guidance: size slots-per-TM ≈ CPU cores per machine (2+ hardware threads per slot with hyperthreading). Total cluster parallelism ceiling = TaskManagers × slots-per-TM. With slot sharing, required slots = job's highest single-operator parallelism, not the sum across operators.</td></tr>
+<tr><td>Memory sizing</td><td>Total Process Memory = Flink Memory (heap + managed + network) + JVM Metaspace + JVM Overhead. Managed-memory fraction default 0.4 (backs RocksDB/batch ops); network-memory fraction default 0.1, min 64MB. Network buffer target per subtask = <code>#channels × buffers-per-channel(2) + floating-buffers-per-gate(8)</code> — grows with parallelism², so raise <code>floating-buffers-per-gate</code> at parallelism &gt;~200, or just enable buffer debloating instead of hand-tuning.</td></tr>
+<tr><td>State size / disk planning</td><td>Move heap → RocksDB once state no longer fits comfortably in heap/GC budget. Incremental checkpoints upload only SST deltas. ⚠ Blog case studies (not official spec): disk <em>type</em> matters more than headroom — a burstable-IOPS volume collapsed a job from &gt;10k events/sec to a few hundred once burst credits ran out; local SSD reported ~10x throughput vs network-attached storage for an 8TB-state job.</td></tr>
+<tr><td>Checkpoint interval/timeout tuning</td><td>No default interval — must be explicitly enabled. Timeout default 10 min (an exceeded attempt is discarded, not retried early). <code>tolerable-failed-checkpoints</code> default 0 — first failure past that triggers a job restart. <code>max-concurrent-checkpoints</code> default 1. Shorter interval = lower RPO, more steady-state overhead and more alignment risk under backpressure; longer interval = cheaper steady state, more replay on failure.</td></tr>
+<tr><td>Max parallelism (key groups)</td><td>Default (if unset) ≈ <code>parallelism + parallelism/2</code>, clamped to [128, 32768]. Must be set deliberately pre-launch — it's the hard rescale ceiling; changing it later is not a safe in-place operation.</td></tr>
+<tr><td>Scaling reads/writes</td><td>Kafka source: target <code>parallelism == partition count</code>; over-provisioning parallelism leaves idle subtasks that don't auto-idle and can stall watermarks unless <code>withIdleness</code> is set. Sink throughput is bounded by the sink operator's parallelism <em>and</em> the target system's own write capacity (DB pool size, output-topic partitions) — Flink doesn't remove that downstream ceiling.</td></tr>
+<tr><td>Multi-region / DR</td><td>Savepoints are the durable, portable DR primitive — <em>not</em> used automatically for failure recovery (checkpoints are). Pattern: persist savepoints/checkpoints to durable object storage outside the primary cluster; on failover, confirm the primary is fully stopped before starting the new region's job (avoid split-brain double-processing). RPO ≈ time since last durably-persisted checkpoint/savepoint (source retention must cover that window); RTO ≈ time to stand up a cluster + restore state (scales with state size) + reconnect sources. ⚠ Ververica Platform's "Disaster Recovery Checkpoint" (periodic cross-region checkpoint copy) is a commercial feature, not core Apache Flink.</td></tr>
+<tr><td>Dedicated role separation at scale</td><td>HA needs ZooKeeper HA services (any deployment, external ZK quorum) or Kubernetes HA services (native ConfigMap/Lease election, no ZK). For large job fleets, isolate each job in its own Application Mode cluster for blast-radius containment rather than sharing Session clusters. Native K8s/YARN mode dynamically negotiates TaskManagers but adds control-plane API load at high job counts vs Standalone's externally-managed pods.</td></tr>
+<tr><td>When NOT to use Flink</td><td>Simple stateless/high-latency-tolerant ETL (nightly warehouse loads) — a batch tool has a far simpler ops model and Flink's checkpointing machinery is pure overhead. Ultra-low-latency single-digit-ms request/response — Flink is an unbounded-stream engine, not a synchronous service. Simple pass-through queueing with no stateful processing — a lighter library avoids paying for a JobManager/checkpoint coordinator you don't need. Static batch analytics / ML training over yesterday's logs — plain batch engines are operationally simpler for bounded data. Teams without dedicated stream-processing ops capacity — Flink demands real tuning discipline (state backend choice, checkpoint sizing, max-parallelism planning up front) that only pays off once continuous stateful processing is the actual requirement.</td></tr>
+</tbody></table>
+
+<!-- ============================ SECTION 7 ============================ -->
+<h2>7. Q&amp;A — rapid-fire talking points</h2>
+<div class="tips">
+<p><strong>Checkpoint vs savepoint?</strong> Checkpoints are automatic, Flink-owned, lightweight, incremental-capable snapshots for fault-tolerant recovery; savepoints are manually triggered, self-contained, versioned snapshots for stop/resume/upgrade/rescale — savepoints are never used for automatic failure recovery.</p>
+<p><strong>Exactly-once vs at-least-once, and how achieved?</strong> Achieved via barrier-aligned checkpoints for internal state plus two-phase-commit sinks for end-to-end exactly-once. At-least-once skips barrier alignment for lower latency but can reprocess records on recovery.</p>
+<p><strong>What happens when a TaskManager dies?</strong> The JobManager detects the failure; the configured failover strategy restarts either the whole job or just the affected pipelined region (default), then the restart strategy governs retry timing; tasks resume from the last completed checkpoint.</p>
+<p><strong>How does rescaling work?</strong> Key groups (fixed at <code>maxParallelism</code>) get reassigned to the new subtask count on restore from a savepoint/checkpoint; <code>maxParallelism</code> itself is effectively fixed once set.</p>
+<p><strong>Event time vs processing time?</strong> Event time uses timestamps embedded in the data — deterministic, replay-safe, needs watermarks. Processing time uses the operator's wall clock — lower latency, non-deterministic.</p>
+<p><strong>Watermarks and late data?</strong> A watermark of T asserts no more events with timestamp &lt; T will arrive; it drives window/timer firing. Events arriving after their window's watermark has passed are late — routed to a side output or dropped depending on allowed-lateness config.</p>
+<p><strong>Backpressure — what and how handled?</strong> A slow downstream operator signals scarcity upstream via credit-based flow control: receivers grant limited buffer credits, senders can only transmit what they hold credit for. There's no separate unbounded buffering queue — it propagates naturally through the credit system all the way to the source.</p>
+<p><strong>RocksDB vs heap — choice criteria?</strong> Heap when state comfortably fits memory and needs max speed; RocksDB once state exceeds available memory/GC budget, trading per-access (de)serialization cost for disk-bound scalability and incremental checkpoints.</p>
+<p><strong>How does HA/leader election work?</strong> One active JobManager among candidates; leadership via ZooKeeper znode election or Kubernetes ConfigMap/Lease election; the leader recovers JobGraphs and checkpoint pointers from the shared HA store so progress survives JM failure.</p>
+<p><strong>Unaligned checkpoints — tradeoff?</strong> Barriers overtake in-flight buffers so checkpoint duration decouples from backpressure, but those buffers become part of the checkpoint (bigger size), it doesn't fix the backpressure cause, and it has narrower local-recovery support than aligned checkpoints.</p>
+<p><strong>How do exactly-once sinks work?</strong> Via two-phase commit: the SinkWriter pre-commits a transaction as part of the checkpoint, and the Committer only finalizes it once the JobManager confirms the checkpoint completed globally — a transaction is never partially visible.</p>
+<p><strong>Why does state TTL matter?</strong> Without it, keyed state accumulates forever, growing both heap usage and checkpoint size unbounded; TTL marks entries with an expiry and cleans them up via background or compaction-filter strategies.</p>
+<p><strong>Table API/SQL vs DataStream API tradeoff?</strong> SQL/Table API is declarative and optimizer-driven (Calcite), needs far less code for standard joins/aggregations/windows and unifies batch/stream; DataStream API is imperative, giving fine-grained control (custom timers, low-level state, side outputs) the Table API can't express — converting between the two has a real runtime cost (RowData ↔ POJO conversion).</p>
+<p><strong>How does Flink differ from Spark Structured Streaming?</strong> Flink is a native streaming engine — continuous, record-at-a-time operators with credit-based flow control, giving a sub-second-to-ms latency floor. Spark Structured Streaming is fundamentally micro-batch even in its lower-latency modes, typically landing in the hundreds-of-ms-to-seconds range.</p>
+</div>
+
+<!-- ============================ SECTION 8 ============================ -->
+<h2>8. Lesser-Known Facts &amp; Pro Tips</h2>
+<table><colgroup><col class="col-cmd" style="width:30%"><col class="col-desc" style="width:70%"></colgroup>
+<thead><tr><th>Fact / knob</th><th>Why it's useful</th></tr></thead>
+<tbody>
+<tr><td>Checkpoint timeout default is 10 minutes</td><td>An exceeded attempt is discarded outright, not silently skipped; repeated timeouts past <code>tolerable-failed-checkpoints</code> (default 0) trigger a full job restart — know this before assuming "it'll just retry quietly."</td></tr>
+<tr><td>Missing <code>.uid()</code> is a production footgun, not a style nit</td><td>Auto-generated operator IDs shift on any topology change — even an unrelated operator added elsewhere in the graph — so a savepoint restore can silently fail to map state to a seemingly-unchanged stateful operator. Docs call explicit <code>uid()</code> "highly recommended" before first deploy; treat it as mandatory.</td></tr>
+<tr><td>Idle sources silently stall watermarks</td><td>A source with more subtasks than partitions, or any genuinely quiet partition, does not auto-idle — since watermark advancement is the min across all inputs, one silent input freezes windows/timers downstream indefinitely unless <code>withIdleness</code> is set.</td></tr>
+<tr><td>Buffer debloating ships off by default</td><td>Despite docs recommending it over manual buffer tuning, <code>buffer-debloat.enabled</code> defaults to false — must be explicitly opted into.</td></tr>
+<tr><td><code>enableObjectReuse()</code> is a correctness footgun disguised as a perf knob</td><td>It skips Flink's defensive deep-copy between operators rather than safely "reusing" objects — any user function that retains a reference across calls (a list/cache) gets silently mutated in place on the next record. Off by default; verifying safety is entirely on the user.</td></tr>
+<tr><td>Default restart strategy changed in 1.19</td><td>Previously fixed-delay with effectively unlimited attempts when checkpointing was enabled with no explicit strategy; 1.19+ defaults to exponential-delay specifically to avoid retry storms hammering a failing external dependency.</td></tr>
+<tr><td>Cancel-with-savepoint ≠ stop-with-savepoint</td><td><code>flink stop</code> atomically savepoints and gracefully drains (sinks get a clean end-of-stream signal, letting 2PC sinks flush) — the correct mechanism for planned migration. Plain <code>cancel</code> snapshots then hard-cancels without that drain guarantee, risking uncommitted in-flight transactions on some sinks.</td></tr>
+<tr><td>Local recovery covers task failure, not node loss</td><td><code>state.backend.local-recovery: true</code> keeps a secondary state copy on the <em>same</em> TaskManager's local disk so a task restart skips re-downloading full state from remote storage — it requires allocation-preserving scheduling and currently covers only keyed state backends.</td></tr>
+<tr><td>The JobManager can bottleneck on operator count, not just data volume</td><td>It transmits full TaskDeploymentDescriptors to every TaskManager at deployment time; very large job graphs (high operator count × high parallelism) can consume significant JM heap and trigger long GC pauses — a scaling axis independent of throughput.</td></tr>
+<tr><td>Kryo fallback serialization is a common silent throughput killer</td><td>Any type Flink's own extractor can't handle as a POJO falls back to generic Kryo — roughly a 75% throughput hit from the fallback alone. Detect via TaskManager logs: "Class class ... cannot be used as a POJO type." Flink 2.0 disables the fallback by default (throws unless explicitly opted in via <code>pipeline.generic-types: true</code> or a custom serializer supplied) — a real behavior change from 1.x.</td></tr>
+</tbody></table>
+<div class="tips">
+<p><strong>Set <code>pipeline.generic-types: false</code> in 1.x</strong> to fail fast on Kryo fallback instead of silently eating the throughput hit — 2.0+ makes this the default behavior.</p>
+<p><strong>Prefer <code>stop</code> over <code>cancel</code> for anything planned</strong> — the drain guarantee is the difference between a clean 2PC commit and a stuck transaction.</p>
+</div>
+
+<!-- ============================ SECTION 9 ============================ -->
+<h2>9. Ecosystem &amp; Integrations</h2>
+<p class="note">Apache Flink is an Apache Software Foundation project and does not itself appear in the CNCF landscape — CNCF graduated/incubating/sandbox status below applies only to the surrounding tools it's typically run alongside.</p>
+
+<h3>Orchestration &amp; lifecycle</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Apache Flink Kubernetes Operator</strong></td><td>Owns <code>FlinkDeployment</code>/<code>FlinkSessionJob</code>/<code>FlinkStateSnapshot</code> CRDs; full lifecycle incl. HA, savepoint-triggered upgrades, native Blue/Green deployments (since 1.14).</td><td>CRD upgrades are a manual step, not folded into <code>helm upgrade</code> — an old CRD paired with a new operator breaks reconciliation. Not a CNCF project. <span class="note">[current stable]</span></td></tr>
+<tr><td><strong>Flink Kubernetes Operator Job Autoscaler</strong> (built-in)</td><td>Per-vertex parallelism autoscaling based on backpressure/utilization target, plus TaskManager memory auto-tuning.</td><td>Needs Flink ≥1.17 for in-place vertex rescaling; older job images fall back to slow full restarts on every scale event.</td></tr>
+</tbody></table>
+
+<h3>GitOps / continuous delivery</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Argo CD</strong> <span class="note">[CNCF Graduated]</span></td><td>Watches Git for FlinkDeployment/FlinkSessionJob manifests, syncs desired state; pair with <code>upgradeMode: savepoint</code> for safe rollout.</td><td>Its built-in health check can show stuck "Progressing"/stale health against operator-managed status fields (argoproj/argo-cd#12862, #12993) — needs a custom Lua health check.</td></tr>
+<tr><td><strong>Flux CD</strong> <span class="note">[CNCF Graduated]</span></td><td>Same GitOps role via HelmRelease/Kustomization for the operator + job manifests.</td><td>Must apply CRDs and wait for operator readiness before FlinkDeployment CRs exist — needs explicit <code>dependsOn</code> ordering or the apply fails.</td></tr>
+</tbody></table>
+
+<h3>Autoscaling &amp; capacity</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Kubernetes HPA</strong></td><td>Scales pod count for stateless session-cluster TaskManager pools on CPU/custom metrics.</td><td>Doesn't know about Flink checkpoints — a scale-down mid-checkpoint on a job without proper last-state/HA config forces a full restart, not a graceful one.</td></tr>
+<tr><td><strong>Karpenter</strong> <span class="note">[CNCF Sandbox]</span></td><td>Provisions/right-sizes nodes under whatever the operator autoscaler + HPA have scheduled.</td><td>Compose in order: Job Autoscaler (vertex-level) → HPA (pod-level) → Karpenter (node-level); they don't coordinate directly with each other.</td></tr>
+</tbody></table>
+
+<h3>Connectors / data integration</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>flink-connector-kafka</strong></td><td>De-facto ingestion/egress backbone.</td><td>Externalized from Flink core since the 1.17-era versioning overhaul (e.g. <code>4.0.0-2.0</code> = connector 4.0.0 for Flink 2.0); not bundled in the binary distribution — version mismatch is a common runtime <code>NoSuchMethodError</code>.</td></tr>
+<tr><td><strong>flink-connector-jdbc</strong>, <strong>-elasticsearch</strong></td><td>Standard external-system sinks/sources.</td><td>Same externalized-versioning compatibility matrix as Kafka — cross-check per Flink minor version before upgrading either side.</td></tr>
+<tr><td><strong>Flink CDC</strong> (apache/flink-cdc)</td><td>De-facto CDC ingestion, wraps the Debezium engine, reads DB changelogs directly and writes natively to Iceberg/Hudi/Delta.</td><td>Debezium engine version is pinned inside each Flink CDC release — upgrading the source DB's CDC plugin ahead of the bundled Debezium version silently breaks change events.</td></tr>
+</tbody></table>
+
+<h3>Schema management</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Confluent Schema Registry</strong></td><td>De-facto Avro/Protobuf schema resolution against Kafka topics via <code>flink-avro-confluent-registry</code>.</td><td>Resolution relies on a schema-ID prefix embedded in the record; data written by a non-Confluent-serializer producer has no such prefix and Flink silently misparses it as raw Avro/Protobuf. Recursive/cyclic Avro schemas are unsupported.</td></tr>
+</tbody></table>
+
+<h3>State storage substrate</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>flink-s3-fs-hadoop</strong> / <strong>-presto</strong></td><td>Durable checkpoint/savepoint object-store backends for S3 (analogous plugins for GCS/Azure Blob; HDFS is native).</td><td>Both register on the same <code>s3://</code> scheme — mixing sink and checkpoint traffic under it is undefined; Presto plugin has no <code>RecoverableWriter</code> (breaks exactly-once file sinks), Hadoop plugin drags a large transitive dependency tree that collides with user-jar classpaths. Workaround: explicit <code>s3a://</code> for sinks, <code>s3p://</code> for checkpointing. An experimental Hadoop-free <code>flink-s3-fs-native</code> shipped in 2.3 to remove this conflict.</td></tr>
+</tbody></table>
+
+<h3>Observability</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Prometheus</strong> <span class="note">[CNCF Graduated]</span> + <strong>Grafana</strong></td><td>De-facto metrics stack; Flink's built-in <code>PrometheusReporter</code> exposes JM/TM/operator metrics; community dashboards are the standard starting point.</td><td>Per-operator/per-subtask metric labels multiply cardinality fast — a 200-operator job at parallelism 50 can generate tens of thousands of series; teams commonly disable fine-grained network detail metrics or aggregate before scraping.</td></tr>
+<tr><td><strong>OpenTelemetry</strong> <span class="note">[CNCF Graduated]</span></td><td>Bundled as one of the Kubernetes Operator's metric reporters alongside Prometheus/JMX/Graphite/Datadog/StatsD.</td><td>Support is at the reporter/exporter level, not full trace-based runtime instrumentation — treat as a metrics-export option, not a drop-in distributed-tracing solution.</td></tr>
+<tr><td><strong>Loki</strong> / <strong>ELK</strong> (Fluent Bit sidecar)</td><td>De-facto log aggregation for JM/TM pod logs.</td><td>Sidecar termination ordering matters — without a proper grace period/shared volume ordering, pod termination during scale-down or last-state upgrades can truncate the final log lines needed for postmortem.</td></tr>
+</tbody></table>
+
+<h3>Secrets &amp; identity</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>External Secrets Operator</strong> + Vault, or <strong>IRSA</strong> (EKS)</td><td>De-facto for dynamic/short-lived credentials — ESO syncs Vault/Secrets-Manager secrets into native K8s Secrets; IRSA lets the Flink pod's service account assume an IAM role directly.</td><td>IRSA requires the JobManager <em>and</em> TaskManager service accounts — not just the operator's — to carry the role-ARN annotation; a common miss is granting IRSA only to the operator's SA and forgetting the job pods need it for S3 checkpoint access.</td></tr>
+</tbody></table>
+
+<h3>Backup / DR</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Flink savepoints</strong> (native)</td><td>The real job-level DR primitive — a self-describing, portable, versioned snapshot restorable across clusters within compatibility bounds.</td><td>This is the mechanism that actually matters; treat everything below as complementary, not a substitute.</td></tr>
+<tr><td><strong>Velero</strong> <span class="note">[CNCF Sandbox]</span></td><td>Cluster-level backup/restore of K8s objects (including CRDs) and PV snapshots.</td><td>Backs up the FlinkDeployment CR's declared spec, not the running job's actual state — restoring recreates the CR and lets the operator reconcile, but true state recovery still depends on savepoint/checkpoint data already existing in external object storage. ⚠ no purpose-built Velero+Flink integration found; it's generic K8s DR layered on top, not aware of Flink's own mechanism.</td></tr>
+</tbody></table>
+
+<h3>Batch / lakehouse overlap</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Apache Iceberg</strong> Flink sink</td><td>Unifies streaming+batch table writes; TableMaintenance API (Iceberg ≥1.7) runs compaction/snapshot-expiration as Flink tasks.</td><td>Short streaming checkpoint intervals × high parallelism × many partitions causes a small-file explosion (documented example: 640 files/min at 32 subtasks × 20 partitions) — mitigate with a longer checkpoint interval (5–10 min cuts file count 5–10x) plus scheduled compaction.</td></tr>
+<tr><td><strong>Apache Hudi</strong> Flink sink</td><td>Alternative lakehouse format; differentiator is inline/async compaction designed not to block ingest.</td><td>Compaction running on the JobManager can still block/delay checkpoints even when configured "offline" (apache/hudi#9849) — separate the compaction job from the ingest job in production.</td></tr>
+<tr><td>Delta Lake connector</td><td>Exists as a Flink sink option.</td><td><span class="note">⚠ unverified adoption</span> — materially less real-world evidence of Flink+Delta usage than Flink+Iceberg/Hudi; treat as secondary/niche for Flink specifically.</td></tr>
+</tbody></table>
+
+<h3>Packaging &amp; platform mgmt</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Helm</strong> (official operator chart)</td><td>Standard install path — operator pod, RBAC, CRDs, optional admission webhook.</td><td>Some deployments split CRDs into a separate chart that must install/upgrade before the operator chart; getting the sequencing wrong (or relying on Helm's default CRD-skip-on-upgrade behavior) leaves stale CRDs behind after a version bump.</td></tr>
+<tr><td><strong>Kustomize</strong></td><td>Used as a Helm post-renderer for customizations values.yaml doesn't expose (e.g. injecting a logging sidecar).</td><td>Not a replacement for Helm here — the documented pattern is <code>helm install --post-renderer &lt;kustomize-script&gt;</code>, a companion not an alternative.</td></tr>
+</tbody></table>
+
+</body>
+</html>

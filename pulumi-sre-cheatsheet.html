@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pulumi SRE Cheatsheet — v3.255.0</title>
+<style>
+@page { size: A4; margin: 14mm; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { padding: 6mm; }
+@media print { body { padding: 0; } }
+body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 8.5pt; line-height: 1.28; color: #000; background: #fff; }
+h1 { font-size: 15pt; margin: 0 0 2pt 0; }
+h2 { font-size: 11pt; margin: 12pt 0 4pt 0; border-bottom: 1.2pt solid #000; padding-bottom: 1pt; page-break-after: avoid; }
+h3 { font-size: 9.2pt; margin: 8pt 0 2pt 0; page-break-after: avoid; }
+p { margin: 2pt 0; }
+.meta { font-size: 8pt; color: #444; margin: 0 0 4pt 0; }
+.meta strong { color: #000; }
+code, kbd, .mono { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace; }
+table { width: 100%; border-collapse: collapse; margin: 3pt 0 5pt 0; table-layout: fixed; }
+th, td { border: 0.4pt solid #999; padding: 1.6pt 3pt; text-align: left; vertical-align: top; font-size: 7.6pt; word-wrap: break-word; overflow-wrap: anywhere; }
+th { background: #e8e8e8; font-weight: bold; }
+td.cmd, td.cmd code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 7.3pt; }
+td code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 7.3pt; }
+.col-cmd { width: 42%; }
+.col-desc { width: 58%; }
+.tips p { margin: 2.5pt 0; font-size: 8pt; }
+.note { font-size: 7.6pt; color: #333; }
+hr { border: 0; border-top: 0.4pt solid #ccc; margin: 4pt 0; }
+.incident { margin: 4pt 0 6pt 0; page-break-inside: avoid; }
+.incident p { font-size: 8pt; }
+.legend { font-size: 7.5pt; color: #333; margin-top: 2pt; }
+h2, h3 { page-break-inside: avoid; }
+table, tr { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+<h1>Pulumi — Senior SRE Cheatsheet</h1>
+<p class="meta"><strong>Pinned version: v3.255.0</strong> (github.com/pulumi/pulumi, released 2026-07-28 — re-check <code>pulumi version</code> before relying on exact patch number). CLI invoked as <code>pulumi &lt;command&gt; [flags]</code>. Auth: <code>pulumi login</code> (no-arg = Pulumi Cloud SaaS backend at <code>api.pulumi.com</code>; <code>pulumi login --local</code> or <code>pulumi login s3://&lt;bucket&gt;</code> / <code>azblob://</code> / <code>gs://</code> / <code>file://~</code> for self-managed "DIY" backends). No listening ports — the CLI is a client process, not a server; all backend traffic is outbound HTTPS.</p>
+<p class="legend"><strong>Legend:</strong> &lt;stack&gt; = org/project/stack-name, &lt;urn&gt; = resource URN, &lt;org&gt;/&lt;project&gt;/&lt;stack&gt; = fully-qualified stack, &lt;key&gt;/&lt;value&gt; = config entries, &lt;version&gt; = provider/package/policy-pack version. <strong>Naming drift:</strong> recent Pulumi releases renamed several short verbs to full words (<code>stack init</code>→<code>stack new</code>, <code>stack ls</code>→<code>stack list</code>, <code>stack rm</code>→<code>stack remove</code>, <code>config rm</code>→<code>config remove</code>, <code>config cp</code>→<code>config copy</code>, <code>state delete</code>→<code>state remove</code>); this sheet uses current canonical names — whether the old short aliases still resolve was not independently confirmed per-command, so check <code>pulumi &lt;cmd&gt; --help</code> on your installed version. <strong>Sources consulted:</strong> pulumi.com/docs (iac/concepts, iac/cli/commands, esc, deployments, insights), github.com/pulumi/pulumi releases + issues, pulumi.com/blog, pulumi-developer-docs.readthedocs.io, CNCF landscape/project pages, GitHub star counts for ecosystem tools. Items that could not be verified against a primary source are marked <strong>⚠ unverified</strong>.</p>
+
+<!-- ============================ SECTION 1 ============================ -->
+<h2>1. Components</h2>
+
+<h3>Control plane &amp; coordination</h3>
+<p><strong>Deployment engine</strong> — embedded inside the <code>pulumi</code> binary itself, not a separate daemon; orchestrates every plan by diffing incoming resource registrations against the last checkpoint.</p>
+<p><strong>Language host process</strong> — the CLI launches a per-language executor binary (<code>pulumi-language-nodejs</code>, <code>pulumi-language-python</code>, <code>-go</code>, <code>-dotnet</code>, <code>-java</code>) that runs your program; the embedded SDK (<code>@pulumi/pulumi</code>, <code>pulumi</code> pip package, …) intercepts resource declarations and streams them out over gRPC.</p>
+<p><strong>Resource Monitor (<code>resmon</code>)</strong> — implements the <code>pulumirpc.ResourceMonitor</code> gRPC service; the sole channel between the language host and the engine. Resolves default providers, dispatches <code>Construct</code> for remote components, marshals every <code>RegisterResource</code> call.</p>
+<p><strong>Step Generator</strong> — turns each <code>RegisterResourceEvent</code>/<code>ReadResourceEvent</code> into an executable step: URN generation → prior-state lookup by URN/aliases → import check → provider <code>Check</code> → policy analyzer → diff → step type (<code>Create</code>/<code>Update</code>/<code>Same</code>/<code>Import</code>/<code>Delete</code>/<code>Replace</code>).</p>
+<p><strong>Step Executor</strong> — a worker pool sized by <code>--parallel</code> (default 16) runs steps serially within a dependency chain and concurrently across independent chains; cancels the whole deployment on a hard step failure.</p>
+<p><strong>Resource provider protocol</strong> — gRPC/protobuf (<code>provider.proto</code>); core RPCs: <code>GetSchema</code>, <code>Configure</code>, <code>CheckConfig</code>, <code>DiffConfig</code>, <code>Check</code>, <code>Diff</code>, <code>Create</code>, <code>Read</code>, <code>Update</code>, <code>Delete</code>, <code>Construct</code>, <code>Invoke</code>, <code>Call</code>, <code>GetPluginInfo</code>, <code>Cancel</code> <span class="note">(newer <code>Parameterize</code> RPC referenced in docs for dynamically-bridged providers — full current surface ⚠ unverified against the live .proto)</span>.</p>
+<p><strong>Provider plugin binaries</strong> — named <code>pulumi-resource-&lt;name&gt;</code>, cached under <code>~/.pulumi/plugins</code>, each a standalone OS process running its own gRPC server, one per provider per run.</p>
+
+<h3>Data / state plane</h3>
+<p><strong>Checkpoint</strong> — Pulumi's state snapshot; written early and often during an operation for crash recovery. Internal JSON shape isn't formally documented — inspect via <code>pulumi stack export</code>.</p>
+<p><strong>Backends</strong> — Pulumi Cloud (default, transactional REST API, recovers cleanly from partial failures, self-hostable) or "DIY": S3, Azure Blob, GCS, S3-compatible object stores, Postgres, local filesystem (<code>file://~</code>), set via <code>PULUMI_BACKEND_URL</code> or <code>backend.url</code> in <code>Pulumi.yaml</code>.</p>
+<p><strong>State locking</strong> — file-based advisory lock on by default on every DIY backend (no external lock table needed, unlike Terraform's S3+DynamoDB pattern); Pulumi Cloud does server-side transactional locking instead. A crashed process leaves an orphaned lock — <code>pulumi cancel</code> clears it without rolling back partial work.</p>
+<p><strong>History &amp; versioning</strong> — Pulumi Cloud records every checkpoint transactionally, browsable in-console; DIY backends keep a checkpoint history path in the same backend storage. <code>pulumi stack export --version &lt;n&gt;</code> pulls a specific historical checkpoint.</p>
+<p><strong>Secrets provider</strong> — pluggable per-stack encryption set at <code>pulumi stack init --secrets-provider=…</code>: <code>default</code> (Cloud-managed), <code>passphrase</code> (<code>PULUMI_CONFIG_PASSPHRASE</code>), <code>awskms://</code>, <code>azurekeyvault://</code>, <code>gcpkms://</code>, <code>hashivault://</code>. Swap later with <code>pulumi stack change-secrets-provider</code> — this re-encrypts, it does not recover state you can no longer decrypt.</p>
+<p><strong>Stack references</strong> — <code>new pulumi.StackReference("org/project/stack")</code> reads another stack's exported outputs via <code>getOutput()</code>/<code>requireOutput()</code>; no automatic cross-stack deploy ordering exists — it's a read, not a trigger.</p>
+
+<h3>Placement, diff &amp; routing state</h3>
+<p><strong>Diff algorithm</strong> — the engine calls the provider's <code>Diff</code> RPC, which returns property-level diffs and flags each changed input as in-place-safe or replacement-required, based on the provider's own knowledge of the cloud API's immutable fields.</p>
+<p><strong>Replace ordering</strong> — default is <strong>create-before-replace</strong> (new resource stood up before the old is torn down, minimizing downtime); <code>deleteBeforeReplace: true</code> flips it to delete-then-create for resources that can't coexist (unique names, scarce IPs) — this cascades to dependents, so scope it narrowly.</p>
+<p><strong>Escape hatches</strong> — <code>ignoreChanges</code> (suppress diff on input paths — also hides real drift on those fields from <code>preview</code>), <code>replaceOnChanges</code> (force replace on paths the provider wouldn't otherwise flag, notably needed for Kubernetes CRDs where the K8s provider can't know per-CRD immutability), <code>customTimeouts</code> (per-resource CRUD timeout override).</p>
+<p><strong>URNs</strong> — every resource's state key is a URN built from type token + logical name + parent chain, not the cloud provider's own ID. <code>aliases</code> lists prior URNs so a rename/reparent/retype isn't read as delete+create.</p>
+<p><strong>Dependency graph</strong> — implicit, built from <code>Output</code> references passed between resources (data flow = dependency edges), plus explicit <code>dependsOn</code> for orderings Pulumi can't otherwise see; deletion order is a reverse topological sort decomposed into parallel-safe "antichains."</p>
+<p><strong>Protection flags</strong> — <code>protect: true</code> refuses any delete of the resource until explicitly unset; <code>retainOnDelete: true</code> drops the resource from state without ever calling the provider's <code>Delete</code>, orphaning the real object on purpose.</p>
+
+<h3>Runtime resource internals</h3>
+<p><strong>Parallelism</strong> — <code>--parallel</code> (default 16, <code>--parallel 1</code> serializes) bounds the step executor's worker pool; every provider plugin is a separate OS process, so cloud-side rate limits (not Pulumi itself) are usually the real ceiling on large stacks.</p>
+<p><strong>Automation API</strong> — a per-language SDK subpackage (TS/JS, Python, Go, C#, Java) that drives the same engine programmatically, no <code>pulumi</code> shell-out. <code>LocalWorkspace</code> (on-disk <code>Pulumi.yaml</code>) or inline programs (a function literal, no on-disk project); a <code>WorkspaceStack</code> exposes <code>up()</code>/<code>preview()</code>/<code>refresh()</code>/<code>destroy()</code>/<code>outputs()</code>. Cross-language driving is supported (a Go automation program can drive a Python Pulumi program).</p>
+<p><strong>CrossGuard (policy engine)</strong> — Policy Packs (TS/JS/Python or OPA/Rego) run inside the step generator's analyzer stage during both <code>preview</code> and <code>up</code>; enforcement levels <code>advisory</code>/<code>mandatory</code>/<code>remediate</code>; pre-built compliance packs (CIS, PCI-DSS, HITRUST, NIST) ship for the Cloud/Enterprise tier with no custom code.</p>
+<p><strong>Pulumi ESC</strong> — unit is the <strong>environment</strong>: a named, versioned YAML doc combining static values, secrets, dynamic values pulled from AWS Secrets Manager/Vault/Azure Key Vault/1Password, OIDC-minted per-cloud short-lived credentials, and values composed from other environments. Standalone <code>esc</code> CLI is being folded into the main <code>pulumi</code> CLI's <code>env</code> subcommand <span class="note">(active transition as of mid-2026 — confirm current split before scripting against it)</span>.</p>
+
+<h3>Ingest, storage substrate &amp; recovery</h3>
+<p><strong>Import</strong> — <code>pulumi import</code> (CLI-first) generates the resource declaration and writes state without ever calling the provider's <code>Create</code>; requires declared inputs to exactly match live state or it hard-fails. CLI-first auto-protects the imported resource; code-first/bulk import (<code>pulumi preview --import-file</code>) does not — add <code>protect: true</code> yourself.</p>
+<p><strong>Backup/restore surgery</strong> — <code>pulumi stack export [--file f.json]</code> → hand-edit a copy → <code>pulumi stack import --file f.json --force</code>; state must stay in dependency order or the reimport is corrupt even though it's valid JSON. Prefer dedicated <code>pulumi state</code> subcommands over raw JSON edits wherever one exists.</p>
+<p><strong>Drift reconciliation</strong> — Pulumi does <em>not</em> implicitly refresh before every operation (deliberate, for performance/predictability); <code>pulumi refresh</code> reconciles recorded state against real cloud state, <code>pulumi up --refresh</code> bundles refresh+update, and <code>options.refresh: always</code> in <code>Pulumi.yaml</code> makes refresh the default for that project.</p>
+<p><strong>Restoring a deleted/corrupted stack</strong> — <code>pulumi stack history</code> to find a good prior update, <code>pulumi stack export --version &lt;n&gt;</code> to pull that checkpoint, then <code>pulumi stack import</code> to restore it; Pulumi Cloud also offers a "restore deleted stack" console action. DIY-backend backup mechanics beyond the checkpoint history path are <strong>⚠ unverified</strong> — pair with your own bucket versioning as a safety net.</p>
+
+<h3>Lifecycle &amp; platform services</h3>
+<p><strong>Config precedence</strong> — per-stack values live in <code>Pulumi.&lt;stack&gt;.yaml</code> (project defaults in <code>Pulumi.yaml</code>); when a key is set both by an imported ESC environment and explicit stack config, the <strong>explicit stack config wins</strong> (documented precedence rule). ESC values project either as process env vars or directly as <code>pulumiConfig</code> keys.</p>
+<p><strong>Pulumi Cloud services</strong> — <strong>Search</strong> (cross-cloud resource search from one pane), <strong>Deployments</strong> (managed, isolated remote execution of <code>preview</code>/<code>up</code>, PR-comment previews, scheduled drift jobs), <strong>Insights</strong> (governance/policy extended to resources discovered outside Pulumi-managed IaC across AWS/Azure/OCI/Kubernetes), <strong>RBAC/Teams/Orgs</strong> (Teams-based access to stacks/environments/Insights — gated to Enterprise/Business Critical tiers).</p>
+<p><strong>Provider SDK for custom providers</strong> — official template is <code>pulumi/pulumi-provider-boilerplate</code> (native provider, <code>CustomResource</code> + <code>ComponentResource</code> examples) built on the <strong>Pulumi Go Provider SDK</strong> (<code>pulumi-go-provider</code>), which derives schema from Go type reflection instead of hand-written JSON; a separate <code>pulumi-tf-provider-boilerplate</code> exists for Terraform-bridged providers.</p>
+
+<!-- ============================ SECTION 2 ============================ -->
+<h2>2. Command Reference</h2>
+
+<h3>Global flags (apply across almost every subcommand)</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Flag</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>-s, --stack &lt;name&gt;</code></td><td>Target stack (repeated on almost every subcommand rather than truly global — check the specific command)</td></tr>
+<tr><td class="cmd"><code>-C, --cwd &lt;path&gt;</code></td><td>Run as if started in another directory</td></tr>
+<tr><td class="cmd"><code>--color &lt;always|never|raw|auto&gt;</code></td><td>Colorize output (default auto)</td></tr>
+<tr><td class="cmd"><code>--non-interactive</code></td><td>Disable interactive prompts (required for CI)</td></tr>
+<tr><td class="cmd"><code>-Q, --fully-qualify-stack-names</code></td><td>Show fully-qualified &lt;org&gt;/&lt;project&gt;/&lt;stack&gt; names</td></tr>
+<tr><td class="cmd"><code>-v, --verbose &lt;n&gt;</code> / <code>--logtostderr</code> / <code>--logflow</code></td><td>Verbose engine logging to stderr; <code>--logflow</code> propagates the same level to provider plugin processes too (see §3)</td></tr>
+<tr><td class="cmd"><code>--tracing &lt;file://|grpc://|https://&gt;</code> / <code>--otel-traces &lt;endpoint&gt;</code></td><td>Emit Zipkin-style or OpenTelemetry execution traces</td></tr>
+<tr><td class="cmd"><code>-j, --json</code></td><td>Machine-readable output where supported</td></tr>
+</tbody></table>
+
+<h3>Core verbs — lifecycle</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi new [template|url]</code></td><td>Scaffold a new project + stack from a template</td></tr>
+<tr><td class="cmd"><code>pulumi preview [-t &lt;urn&gt;] [--diff] [-j]</code></td><td>Compute and show the plan without applying; <code>--diff</code> renders a rich property-level diff, <code>--target-dependents</code> pulls in discovered dependents of a <code>-t</code> target</td></tr>
+<tr><td class="cmd"><code>pulumi up [-y] [-f] [-t &lt;urn&gt;] [-p &lt;n&gt;] [--expect-no-changes]</code></td><td><code>-y</code> auto-approves after preview, <code>-f/--skip-preview</code> skips the preview pass, <code>-p/--parallel</code> caps concurrent resource ops (default 16)</td></tr>
+<tr><td class="cmd"><code>pulumi destroy [-t &lt;urn&gt;] [--exclude-protected] [--continue-on-error] [--remove]</code></td><td>Deletes all real cloud resources in the stack — <strong>destructive</strong>; <code>--remove</code> also deletes the stack+config afterward</td></tr>
+<tr><td class="cmd"><code>pulumi refresh [-t &lt;urn&gt;] [--clear-pending-creates] [--import-pending-creates &lt;urn&gt; &lt;id&gt;]</code></td><td>Reconcile recorded state against live cloud state; the pending-creates flags clean up an interrupted apply's half-finished resources</td></tr>
+<tr><td class="cmd"><code>pulumi cancel [-y]</code></td><td>Release a stack's update lock/lease — does <strong>not</strong> roll back any partial change; the primary tool for a hung <code>up</code></td></tr>
+<tr><td class="cmd"><code>pulumi import &lt;type&gt; &lt;name&gt; &lt;id&gt;</code></td><td>Bring an existing cloud resource under management; generates code, auto-sets <code>protect: true</code></td></tr>
+<tr><td class="cmd"><code>pulumi console</code></td><td>Open the current stack in the Pulumi Cloud console</td></tr>
+</tbody></table>
+
+<h3>State surgery (<code>pulumi state</code>)</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi state remove &lt;urn&gt; [--all] [--force] [--target-dependents]</code></td><td>Delete resource(s) from state only, no cloud call — Pulumi "forgets" it; a later <code>up</code> may try to recreate it. <strong>Destructive to your bookkeeping.</strong> (current canonical name — older docs called this <code>state delete</code>)</td></tr>
+<tr><td class="cmd"><code>pulumi state protect / unprotect &lt;urn&gt; [--all]</code></td><td>Set/clear the <code>protect</code> bit directly in state</td></tr>
+<tr><td class="cmd"><code>pulumi state rename &lt;urn&gt; &lt;new-name&gt;</code></td><td>Rename a resource in state</td></tr>
+<tr><td class="cmd"><code>pulumi state move --source &lt;stack&gt; --dest &lt;stack&gt; &lt;urn&gt;…</code></td><td>Move resources between stacks</td></tr>
+<tr><td class="cmd"><code>pulumi state edit</code></td><td>Open state in <code>$EDITOR</code> <span class="note">(experimental)</span></td></tr>
+<tr><td class="cmd"><code>pulumi state repair</code></td><td>Attempt to repair an invalid state document</td></tr>
+<tr><td class="cmd"><code>pulumi state taint / untaint &lt;urn&gt;</code></td><td>Force a resource to be treated as needing replacement on next apply</td></tr>
+<tr><td class="cmd"><code>pulumi state upgrade</code></td><td>Migrate a DIY backend to the latest on-disk state format — <strong>irreversible</strong></td></tr>
+</tbody></table>
+
+<h3>Stack management</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi stack new [org/]&lt;name&gt; [--secrets-provider] [--copy-config-from]</code></td><td>Create an empty stack <span class="note">(current name for the classic "init")</span></td></tr>
+<tr><td class="cmd"><code>pulumi stack select [-c] &lt;stack&gt;</code></td><td>Switch the active stack (<code>-c</code> creates it if missing)</td></tr>
+<tr><td class="cmd"><code>pulumi stack list [-a] [-o &lt;org&gt;] [-t &lt;tag&gt;]</code></td><td>List stacks</td></tr>
+<tr><td class="cmd"><code>pulumi stack remove [-f] [--preserve-config] [-y]</code></td><td>Delete a stack and its config — refuses if resources remain unless <code>-f</code>. <strong>Irreversible.</strong></td></tr>
+<tr><td class="cmd"><code>pulumi stack output [property] [-j] [--show-secrets]</code></td><td>Print stack output properties</td></tr>
+<tr><td class="cmd"><code>pulumi stack export [--file f.json] [--version &lt;n&gt;] [--show-secrets]</code></td><td>Dump the raw checkpoint as JSON</td></tr>
+<tr><td class="cmd"><code>pulumi stack import [--file f.json] [-f]</code></td><td>Overwrite the stack's checkpoint from a file — <strong>can wipe/corrupt state</strong></td></tr>
+<tr><td class="cmd"><code>pulumi stack history [--full-dates] [--page]</code></td><td>Show update history</td></tr>
+<tr><td class="cmd"><code>pulumi stack tag get|list|set|remove</code></td><td>Manage stack tags</td></tr>
+<tr><td class="cmd"><code>pulumi stack change-secrets-provider &lt;new-provider&gt;</code></td><td>Re-encrypt secrets under a new provider — requires the <em>old</em> key to still be readable</td></tr>
+<tr><td class="cmd"><code>pulumi stack graph &lt;file&gt;.dot [--ignore-dependency-edges] [--short-node-name]</code></td><td>Export the resource dependency graph as DOT for Graphviz</td></tr>
+</tbody></table>
+
+<h3>Config &amp; secrets</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi config get &lt;key&gt;</code></td><td>Read a single value</td></tr>
+<tr><td class="cmd"><code>pulumi config set &lt;key&gt; [value] [--secret] [--path]</code></td><td>Set a value; <code>--secret</code> encrypts it under the stack's secrets provider, <code>--path</code> sets a nested key</td></tr>
+<tr><td class="cmd"><code>pulumi config set-all</code></td><td>Set multiple keys in one call</td></tr>
+<tr><td class="cmd"><code>pulumi config remove / remove-all &lt;key&gt;</code></td><td>Delete one or all config values <span class="note">(current name for "rm")</span></td></tr>
+<tr><td class="cmd"><code>pulumi config refresh</code></td><td>Sync local config with the latest deployed checkpoint</td></tr>
+<tr><td class="cmd"><code>pulumi config copy --dest &lt;stack&gt;</code></td><td>Copy config to another stack <span class="note">(current name for "cp")</span></td></tr>
+<tr><td class="cmd"><code>pulumi config --open</code></td><td>Resolve and display ESC-environment-sourced config references</td></tr>
+</tbody></table>
+
+<h3>Pulumi ESC (<code>pulumi env</code>)</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi env init &lt;org&gt;/&lt;name&gt;</code></td><td>Create an empty environment</td></tr>
+<tr><td class="cmd"><code>pulumi env get &lt;env&gt; &lt;path&gt;</code></td><td>Read a value from an environment</td></tr>
+<tr><td class="cmd"><code>pulumi env set &lt;env&gt; &lt;path&gt; &lt;value&gt; [--secret] [--plaintext]</code></td><td>Set a static value or secret</td></tr>
+<tr><td class="cmd"><code>pulumi env open &lt;env&gt;</code></td><td>Resolve the environment (evaluate dynamic providers/imports) and print the result</td></tr>
+<tr><td class="cmd"><code>pulumi env run &lt;env&gt; [-- cmd]</code></td><td>Open the environment and run a command with resolved values injected as env vars</td></tr>
+<tr><td class="cmd"><code>pulumi env list</code></td><td>List environments</td></tr>
+<tr><td class="cmd"><code>pulumi env edit &lt;env&gt;</code></td><td>Edit an environment's YAML definition</td></tr>
+<tr><td class="cmd"><code>pulumi env version / tag / clone / diff / rotate / remove</code></td><td>Version and lifecycle management for environments</td></tr>
+</tbody></table>
+
+<h3>Project, plugin &amp; provider management</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi plugin install resource &lt;name&gt; &lt;version&gt;</code></td><td>Fetch a specific provider plugin — pins version to fix a "expected version X, has Y" mismatch</td></tr>
+<tr><td class="cmd"><code>pulumi plugin list</code></td><td>Show installed plugins and versions</td></tr>
+<tr><td class="cmd"><code>pulumi plugin remove</code></td><td>Clear plugin(s) from the local download cache</td></tr>
+<tr><td class="cmd"><code>pulumi package add &lt;schema-or-provider&gt;</code></td><td>Add a package to the project — including <code>terraform-provider &lt;name&gt;</code> to bridge <em>any</em> Terraform/OpenTofu provider on the fly</td></tr>
+<tr><td class="cmd"><code>pulumi package gen-sdk</code></td><td>Generate per-language SDK(s) from a schema/package</td></tr>
+<tr><td class="cmd"><code>pulumi package get-schema / get-mapping / info</code></td><td>Inspect a package's schema or Terraform mapping</td></tr>
+<tr><td class="cmd"><code>pulumi package publish</code></td><td>Publish a package to the Private Registry</td></tr>
+<tr><td class="cmd"><code>pulumi login [url] [--local] [-c &lt;url&gt;] [--oidc-*]</code></td><td>Authenticate against Pulumi Cloud, self-hosted, local, or a DIY object-store backend; <code>--oidc-*</code> flags exchange a CI OIDC token instead of a static access token</td></tr>
+<tr><td class="cmd"><code>pulumi logout [--all]</code></td><td>Clear cached credentials</td></tr>
+<tr><td class="cmd"><code>pulumi whoami [-v]</code></td><td>Show current identity; <code>-v</code> adds org/team detail</td></tr>
+<tr><td class="cmd"><code>pulumi org get-default / set-default / search</code></td><td>Manage default organization context</td></tr>
+<tr><td class="cmd"><code>pulumi about [-j] [-t]</code></td><td>Dump CLI/plugin/runtime/backend diagnostic info — first thing to attach to a bug report; <code>-t</code> adds transitive deps</td></tr>
+</tbody></table>
+
+<h3>Policy as code</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi policy new [template]</code></td><td>Scaffold a new Policy Pack</td></tr>
+<tr><td class="cmd"><code>pulumi policy publish [org]</code></td><td>Publish a Policy Pack to Pulumi Cloud</td></tr>
+<tr><td class="cmd"><code>pulumi policy enable &lt;org&gt;/&lt;pack&gt; latest|&lt;version&gt; [--config]</code></td><td>Enforce a published pack org-wide</td></tr>
+<tr><td class="cmd"><code>pulumi policy disable &lt;org&gt;/&lt;pack&gt;</code></td><td>Stop enforcing a pack <span class="note">(exact flag set ⚠ unverified — expect symmetry with <code>enable</code>)</span></td></tr>
+<tr><td class="cmd"><code>pulumi policy list</code></td><td>List Policy Packs for an org</td></tr>
+<tr><td class="cmd"><code>pulumi policy analyze</code></td><td>Run policy against currently-deployed resource state, not just at apply time</td></tr>
+<tr><td class="cmd"><code>pulumi policy validate-config</code></td><td>Validate a Policy Pack's config against its schema</td></tr>
+</tbody></table>
+
+<h3>Observability &amp; introspection</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command</th><th>Description</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>pulumi logs [-f] [-r &lt;resource&gt;] [--since] [-j]</code></td><td>Aggregate resource logs (e.g. Lambda/container logs) <span class="note">(marked experimental in current docs)</span></td></tr>
+<tr><td class="cmd"><code>pulumi stack output</code> / <code>pulumi stack graph</code></td><td>See §Stack management</td></tr>
+<tr><td class="cmd"><code>pulumi convert --from terraform --language typescript</code></td><td>Convert a program between languages, or from Terraform/Bicep/ARM/Kubernetes manifests into a Pulumi language; self-reported ~90-95% auto-conversion for typical Terraform projects, remainder flagged as TODOs</td></tr>
+<tr><td class="cmd"><code>pulumi watch [--path] [-p]</code></td><td>Continuously re-preview/apply on file change <span class="note">(experimental)</span></td></tr>
+<tr><td class="cmd"><code>pulumi preview --json</code></td><td>Machine-parseable plan output for CI gating or custom tooling — no first-party Prometheus/Datadog exporter ships; wiring it into a metrics pipeline is a build-it-yourself pattern <span class="note">⚠ unverified as an off-the-shelf integration</span></td></tr>
+</tbody></table>
+
+<h3>Disaster / Recovery</h3>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Scenario</th><th>Command pattern</th></tr></thead>
+<tbody>
+<tr><td>Stuck/locked update</td><td class="cmd"><code>pulumi cancel</code> — releases the lease without rollback. No dedicated <code>--force-unlock</code> flag was found; manually deleting a DIY backend's lock object is community practice, <strong>⚠ not documented Pulumi behavior</strong></td></tr>
+<tr><td>Bad resource stuck in state</td><td class="cmd"><code>pulumi state remove &lt;urn&gt; [--force] [--target-dependents]</code> — takes URNs positionally, not a <code>--target</code> flag</td></tr>
+<tr><td>Manual state surgery</td><td class="cmd"><code>pulumi stack export --file f.json</code> → edit a copy → <code>pulumi stack import --file f.json --force</code></td></tr>
+<tr><td>Reconcile drift</td><td class="cmd"><code>pulumi refresh [-t &lt;urn&gt;] [--clear-pending-creates]</code></td></tr>
+<tr><td>Partial teardown</td><td class="cmd"><code>pulumi destroy -t &lt;urn&gt; [--target-dependents]</code> — <strong>destructive</strong></td></tr>
+<tr><td>Restore a bad/corrupted checkpoint</td><td class="cmd"><code>pulumi stack history</code> → <code>pulumi stack export --version &lt;n&gt;</code> → <code>pulumi stack import</code></td></tr>
+<tr><td>Interrupted apply left pending ops</td><td class="cmd"><code>pulumi refresh --clear-pending-creates</code> or <code>--import-pending-creates &lt;urn&gt; &lt;physical-id&gt;</code></td></tr>
+</tbody></table>
+
+<h3>Automation API</h3>
+<p class="tips"><strong>What it is</strong> — a per-language SDK (TS/JS, Python, Go, C#, Java) that drives the same engine as the CLI programmatically: <code>LocalWorkspace</code>/<code>RemoteWorkspace</code> plus a <code>Stack</code> object exposing <code>up()</code>, <code>preview()</code>, <code>refresh()</code>, <code>destroy()</code>, <code>outputs()</code>.</p>
+<p class="tips"><strong>Where a senior reaches for it</strong> — self-service internal developer platforms, multi-tenant SaaS provisioning (per-customer stacks), Backstage-style portals, custom REST/gRPC infra APIs, integration test harnesses (spin up → assert → destroy), and CI orchestration needing real error handling around <code>preview</code>/<code>up</code> instead of shell exit codes.</p>
+
+<!-- ============================ SECTION 3 ============================ -->
+<h2>3. Deep Debugging</h2>
+<p class="tips"><strong>3am default</strong> — <code>pulumi up --logtostderr --logflow -v=9 -d 2&gt; out.txt</code> captures engine + provider + program logs in one file; <code>-v=11</code> deliberately unmasks credentials, scrub before sharing.</p>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Command / Technique</th><th>What it reveals / when to use</th></tr></thead>
+<tbody>
+<tr><td class="cmd"><code>-v=9 --logtostderr</code></td><td>Verbose engine logging (levels 1–11) to stderr instead of the temp-dir log files</td></tr>
+<tr><td class="cmd"><code>--logflow</code> (with <code>-v</code>)</td><td>Without it only the engine logs verbosely; this propagates the same <code>-v</code> level into provider plugin processes, exposing raw cloud API request/response traffic at high levels</td></tr>
+<tr><td class="cmd"><code>-d / --debug</code></td><td>Surfaces your own program's debug-level log calls, hidden by default</td></tr>
+<tr><td class="cmd"><code>TF_LOG=TRACE pulumi up --logtostderr --logflow -v=10</code></td><td>Terraform-bridged providers (aws, azure, gcp classic) honor <code>TF_LOG</code> underneath — surfaces the bridged Terraform provider's own trace logging</td></tr>
+<tr><td class="cmd"><code>PULUMI_DEBUG_GRPC=&lt;file&gt;</code></td><td>Traces Pulumi's internal gRPC calls (engine↔language-host↔provider) <span class="note">(an alternate name <code>GRPC_TRACE</code> surfaced in one source — ⚠ unverified, use <code>PULUMI_DEBUG_GRPC</code>)</span></td></tr>
+<tr><td class="cmd"><code>PULUMI_DEBUG_COMMANDS=1</code></td><td>Unlocks hidden debug commands including <code>pulumi view-trace</code></td></tr>
+<tr><td class="cmd"><code>pulumi preview --diff</code></td><td>Rich property-level diff instead of a one-line summary — first move whenever a replace looks unexpected</td></tr>
+<tr><td class="cmd"><code>pulumi about [-j] [-t]</code></td><td>CLI/plugin/runtime/backend dump — paste into any bug report</td></tr>
+<tr><td class="cmd"><code>pulumi stack export</code></td><td>Raw checkpoint JSON, bypassing all CLI rendering</td></tr>
+<tr><td class="cmd"><code>pulumi stack graph out.dot [--ignore-dependency-edges]</code></td><td>DOT-format dependency graph via Graphviz — untangles unexpected ordering/parallelism</td></tr>
+<tr><td class="cmd"><code>--tracing=file:./up.trace</code> then <code>PULUMI_DEBUG_COMMANDS=1 pulumi view-trace ./up.trace</code></td><td>Zipkin-style timing trace served at <code>localhost:8008</code>; can also point at a remote Zipkin/Jaeger collector</td></tr>
+<tr><td class="cmd"><code>--otel-traces grpc://localhost:4317</code></td><td>OpenTelemetry trace spanning engine <em>and</em> child provider processes (auto-propagated endpoint) — best for finding which provider call is the actual bottleneck</td></tr>
+<tr><td class="cmd"><code>pulumi cancel</code></td><td>Releases a hung update's lock; does not undo partial work — follow with <code>pulumi refresh</code></td></tr>
+<tr><td class="cmd"><code>pulumi up --attach-debugger</code></td><td>Pauses the program (not the provider) for an IDE debugger; supported for Go/Python/Node/.NET/Java. <code>up</code> runs the program twice (preview+update) — use <code>preview --attach-debugger</code> or add <code>--skip-preview</code> to isolate one pass</td></tr>
+<tr><td class="cmd"><code>PULUMI_DEBUG_PROVIDERS="&lt;name&gt;:&lt;port&gt;" pulumi up</code></td><td>Attach a debugger to a specific provider plugin process; killing the paused process mid-debug can desync state from real cloud resources — <code>pulumi refresh</code> after</td></tr>
+<tr><td class="cmd"><code>pulumi plugin list</code></td><td>Diagnoses "resource plugin X is expected to have version ≥A, but has B" errors</td></tr>
+<tr><td class="cmd"><code>strace -f -e trace=%network pulumi up</code> / <code>tcpdump</code> / <code>mitmproxy</code></td><td>OS-level: language-host and provider plugins are just child processes — strace shows whether a hang is blocked on network I/O vs. an in-process deadlock; tcpdump/an intercepting proxy shows whether the process is actually waiting on the cloud API. <span class="note">⚠ not a documented Pulumi workflow — standard ops practice layered on top</span></td></tr>
+</tbody></table>
+
+<!-- ============================ SECTION 4 ============================ -->
+<h2>4. Top Incidents</h2>
+<p class="tips"><strong>Walk any incident out loud:</strong> observe the actual error/diff first, not the ticket's paraphrase → localize: is this control-plane (the engine/state/lock) or data-plane (a real cloud resource the provider touched)? → let <code>pulumi preview --diff</code> / <code>stack export</code> / provider error text name the cause instead of guessing → stabilize (unblock the stack — cancel a lock, refresh drift) before you fix (correct the code/config) → name the prevention so it doesn't recur.</p>
+
+<div class="incident">
+<h3>1. Stuck/abandoned state lock</h3>
+<p><strong>Symptom:</strong> <code>error: [409] Conflict: Another update is currently in progress</code> (Pulumi Cloud) or a lock-file error (DIY backend); every subsequent <code>up</code>/<code>preview</code>/<code>destroy</code> on the stack fails immediately.</p>
+<p><strong>Root cause:</strong> a CLI process was SIGKILLed, OOM-killed, or its spot instance was reclaimed mid-update, leaving an active lease (Cloud) or lock object at <code>.pulumi/locks/&lt;stack&gt;/$lock.json</code>-style path (DIY) with no process left to release it.</p>
+<p><strong>Fix:</strong> confirm no one is genuinely mid-update (check the Cloud console for the latest update's initiator), then <code>pulumi cancel</code>; a <code>[400] the update has already completed</code> response is safe to ignore. Follow with <code>pulumi refresh --clear-pending-creates</code> to clean up anything left mid-flight. <strong>Prevent:</strong> set CI job timeouts with a cleanup step that runs <code>pulumi cancel --yes</code> on failure/kill.</p>
+</div>
+
+<div class="incident">
+<h3>2. State drift causing unexpected diffs/replaces</h3>
+<p><strong>Symptom:</strong> <code>preview</code>/<code>up</code> proposes changes or replacements nobody made in code.</p>
+<p><strong>Root cause:</strong> Pulumi does not implicitly refresh before every operation (deliberate, for speed/predictability) — console click-ops or another tool's out-of-band change goes unnoticed until someone runs <code>refresh</code>.</p>
+<p><strong>Fix:</strong> <code>pulumi refresh</code> then <code>preview --diff</code> to review before applying, or <code>pulumi up --refresh</code> to bundle both. <strong>Prevent:</strong> set <code>options.refresh: always</code> in <code>Pulumi.yaml</code>, or a scheduled <code>pulumi refresh --preview-only --expect-no-changes</code> CI job that fails loudly on any drift.</p>
+</div>
+
+<div class="incident">
+<h3>3. Accidental delete+create from a rename or immutable property</h3>
+<p><strong>Symptom:</strong> a variable rename, reparent, or trivial property edit shows <code>- delete</code> + <code>+ create</code> for a resource that should be untouched (databases are the classic victim).</p>
+<p><strong>Root cause:</strong> a resource's identity is its URN (name+type+parent+project+stack); changing any of those changes the URN and the default behavior is delete-old/create-new. Some cloud properties are also provider-declared immutable, forcing a replace independent of naming.</p>
+<p><strong>Fix:</strong> add the old URN to <code>aliases</code> on the renamed/moved resource and confirm with <code>preview</code> that it now shows an in-place update, not delete+create. <strong>Prevent:</strong> require <code>preview --diff</code> in CI before any rename/refactor merges; set <code>protect: true</code> on stateful/critical resources.</p>
+</div>
+
+<div class="incident">
+<h3>4. Secrets provider misconfiguration / lost KMS access</h3>
+<p><strong>Symptom:</strong> <code>AccessDenied</code> on <code>kms:Decrypt</code> when reading encrypted config/state; team fully locked out of decrypting existing state.</p>
+<p><strong>Root cause:</strong> the calling identity lacks <code>kms:Decrypt</code> in IAM and/or the KMS key policy; if the key itself is deleted/disabled, anything encrypted with it is unrecoverable.</p>
+<p><strong>Fix:</strong> repair IAM + key policy grants; if the old key is truly gone, <code>pulumi stack change-secrets-provider</code> only helps if you can still decrypt with the old key first — it re-encrypts forward, it does not recover from an unreadable key. <strong>Prevent:</strong> validate KMS encrypt/decrypt grants during environment bootstrap; treat key deletion protection/rotation as part of your state DR plan.</p>
+</div>
+
+<div class="incident">
+<h3>5. Provider version bump causing broad diffs across the stack</h3>
+<p><strong>Symptom:</strong> upgrading a provider package produces diffs across nearly every resource of that type, or unexpected forced replacements with no real-world change.</p>
+<p><strong>Root cause:</strong> bridged providers periodically make breaking schema changes tracking their upstream Terraform provider; if program code isn't updated in lockstep, Pulumi sees the old input shape vs. the new provider's expected shape as a diff.</p>
+<p><strong>Fix:</strong> read the provider's changelog before a major bump; update input shapes to match; <code>preview --diff</code> to confirm no unintended replaces; pin with <code>pulumi plugin install resource &lt;name&gt; &lt;version&gt;</code> if a version-mismatch warning appears. <strong>Prevent:</strong> bump provider majors deliberately, isolated from other changes, on a low-risk stack first; assert expected plugin versions in CI via <code>pulumi plugin list</code>.</p>
+</div>
+
+<div class="incident">
+<h3>6. Corrupted or manually-edited state</h3>
+<p><strong>Symptom:</strong> <code>up</code> fails schema/parse validation after a hand-edited <code>stack export</code> is reimported, or after an I/O error mid-write during a network partition.</p>
+<p><strong>Root cause:</strong> state is an ordered document — dependent resources must appear after what they depend on — and manual edits that break ordering or drop a dependency edge corrupt it even though the JSON itself is well-formed.</p>
+<p><strong>Fix:</strong> try, in order: <code>pulumi refresh</code>; upgrade the CLI; use <code>pulumi import</code> instead of hand-editing for resources that already exist in the cloud; as a last resort, back up the export, edit a <em>separate</em> copy, then <code>stack import</code>. Prefer <code>pulumi state</code> subcommands over raw JSON surgery. <strong>Prevent:</strong> never let two people edit an export/import cycle concurrently — no lock protects that window.</p>
+</div>
+
+<div class="incident">
+<h3>7. Parallelism-driven cloud API rate-limiting</h3>
+<p><strong>Symptom:</strong> large stacks with high <code>--parallel</code> hit provider-side throttling — e.g. Kubernetes client "throttling request" warnings, or intermittent bulk-create failures.</p>
+<p><strong>Root cause:</strong> Pulumi's default parallelism can exceed a provider's own client throttle (K8s client-go defaults to QPS 5 / Burst 10) or the cloud API's own rate limit, independent of Pulumi.</p>
+<p><strong>Fix:</strong> lower <code>--parallel</code>/<code>PULUMI_PARALLEL</code> for the affected stack; for Kubernetes specifically, raise client QPS/Burst via provider env vars <span class="note">⚠ sourced from a GitHub issue thread only, not an official docs page — verify the exact var names before scripting</span>. <strong>Prevent:</strong> tune parallelism per-stack against empirically observed limits rather than leaving very large stacks on defaults.</p>
+</div>
+
+<div class="incident">
+<h3>8. Concurrent applies on a non-Cloud (DIY) backend</h3>
+<p><strong>Symptom:</strong> two pipelines (or a human + CI) run <code>up</code> on the same stack simultaneously against S3/Blob/GCS, producing a corrupted or clobbered checkpoint.</p>
+<p><strong>Root cause:</strong> DIY backends do implement file-based locking by default (contrary to older assumptions of "no concurrency control"), but Pulumi itself describes it as "basic" — historically and in edge cases, concurrent writes could still race.</p>
+<p><strong>Fix:</strong> restore from the backend's timestamped checkpoint backup (or your own bucket versioning), then <code>pulumi refresh</code>. <strong>Prevent:</strong> never let CI pipelines run overlapping <code>up</code>/<code>destroy</code> for the same stack — serialize deploy jobs; enable bucket versioning on the DIY backend's storage as a safety net; consider Pulumi Cloud's server-side locking for teams with real concurrent-deploy risk.</p>
+</div>
+
+<div class="incident">
+<h3>9. Import failures on existing infrastructure</h3>
+<p><strong>Symptom:</strong> <code>pulumi import</code> fails with "inputs to import do not match the existing resource" — often from subtle casing/default-value mismatches; bulk program-first imports fail across many resources at once.</p>
+<p><strong>Root cause:</strong> import requires the program's declared inputs to exactly match the live resource's reported state; any mismatch (casing, defaulted/computed fields you didn't specify) is a hard failure, not a partial import.</p>
+<p><strong>Fix:</strong> iterate on input values using the mismatch warnings; CLI-first import emits generated code you can copy in directly. For many resources, use <code>pulumi preview --import-file</code> to generate a manifest to review before executing. <strong>Prevent:</strong> prefer CLI-first import for a handful of resources (it auto-protects), review the generated import manifest carefully for bulk imports.</p>
+</div>
+
+<div class="incident">
+<h3>10. Cross-stack reference breakage</h3>
+<p><strong>Symptom:</strong> a downstream stack's <code>preview</code>/<code>up</code> fails or silently computes a wrong value after an upstream team renames or removes a stack output the downstream <code>StackReference</code> reads.</p>
+<p><strong>Root cause:</strong> <code>requireOutput()</code> fails at deployment time only, with no compile-time contract between stacks — there is no automatic ordering or notification when an upstream stack's output shape changes.</p>
+<p><strong>Fix:</strong> use <code>requireOutput</code> (fails loudly, easy to diagnose) rather than an optional <code>getOutput</code> for mandatory values; use <code>getOutputDetails</code> to inspect a referenced output directly while debugging. <strong>Prevent:</strong> treat stack outputs as a versioned interface between teams — communicate before renaming/removing a consumed output; consider Pulumi ESC for shared values instead of chaining ad hoc stack references.</p>
+</div>
+
+<!-- ============================ SECTION 5 ============================ -->
+<h2>5. Core Concepts &amp; Tradeoffs</h2>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Concept</th><th>How it works &amp; the tradeoff</th></tr></thead>
+<tbody>
+<tr><td>Declarative vs. imperative authoring</td><td>Both Pulumi and Terraform/OpenTofu are declarative <em>execution</em> models — you describe end state, the engine computes the diff. Pulumi's authoring layer is a general-purpose language (loops, conditionals, real package managers, IDE tooling) instead of HCL. Tradeoff: GP-language expressiveness and reuse vs. HCL's more constrained, more uniformly-analyzable surface (easier static tooling, more predictable plan output across a large team).</td></tr>
+<tr><td>Reconciliation model</td><td>Engine diffs desired (program-evaluated) state against last-recorded state, computes CRUD ops. Neither Pulumi nor Terraform auto-rolls-back a failed apply — both leave infra partially updated for the operator to reconcile forward (re-run, or revert+re-run).</td></tr>
+<tr><td>State as source of truth</td><td>The checkpoint, not the cloud, is what Pulumi believes exists — which is why drift matters. <code>pulumi refresh --preview-only</code> diffs recorded vs. live state without mutating either; refresh is deliberately not automatic before every op (performance/predictability tradeoff), so silent drift is the cost of not running it on a schedule.</td></tr>
+<tr><td>Diff/replace decision tree</td><td>The provider's own <code>Diff</code> RPC is authoritative on update-in-place vs. replace, based on which cloud fields are immutable. Escape hatches trade blast-radius for control: <code>ignoreChanges</code> (suppress a diff, but also hides real drift there), <code>replaceOnChanges</code> (force a replace the provider wouldn't otherwise flag — needed for K8s CRDs), <code>deleteBeforeReplace</code> (flip ordering, cascades to dependents).</td></tr>
+<tr><td>Concurrency/locking</td><td>DIY backends: cheap file-based advisory locks, no extra infra, but blunt — whole-stack exclusive, manual <code>cancel</code> needed after a crash. Pulumi Cloud: transactional server-side locking, no external lock table needed (unlike Terraform's typical S3+DynamoDB pattern) — trades self-hosting simplicity for a SaaS/managed-service dependency.</td></tr>
+<tr><td>Secrets handling</td><td>Secret values are encrypted in state by default, per-stack, pluggable KMS backend. Passphrase mode trades convenience for a shared-secret-distribution problem across a team/CI; cloud KMS trades setup complexity for centralized rotation/audit. Contrast: Terraform's default state has sensitive values unencrypted at rest unless an external layer (e.g. Vault) is bolted on.</td></tr>
+<tr><td>Multi-language support</td><td>Provider SDKs are codegen'd from one schema (the provider's <code>GetSchema</code> RPC response) into per-language bindings — one schema author, N language packages, vs. Terraform's HCL-only provider surface needing separate community bridges into other ecosystems. Tradeoff: the provider author now owns a codegen/release pipeline per target language, and generated-SDK quality varies by language.</td></tr>
+<tr><td>Component vs. custom resources</td><td>A <code>CustomResource</code> maps 1:1 to a provider-managed cloud object with real CRUD. A <code>ComponentResource</code> is a graph node with no CRUD of its own — pure encapsulation/reuse, provisioned by creating its children. Unlike Terraform modules (which the docs describe as static HCL units that flatten into state), components are real, addressable graph nodes — reusable "infra modules" at the cost of an extra layer to reason about when debugging dependency/graph issues.</td></tr>
+<tr><td>Stack-per-environment vs. single-stack</td><td>Standard pattern is one stack per environment (dev/staging/prod), each with independent config/secrets and blast-radius isolation — at the cost of keeping N stacks' code and cadence in sync, mitigated by stack references and/or component reuse.</td></tr>
+</tbody></table>
+
+<!-- ============================ SECTION 6 ============================ -->
+<h2>6. System Design &amp; Capacity Planning</h2>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Lever</th><th>Rule of thumb / guidance</th></tr></thead>
+<tbody>
+<tr><td>Stack structuring spectrum</td><td>Three named patterns from Pulumi's own guidance: <strong>Monolithic</strong> (one stack per environment, everything together — simplest, but one blast radius and one permission boundary); <strong>Layered</strong> (split by infra layer — network → cluster → workload — wired via stack references; "the recommended default once a monolith starts to hurt"); <strong>Micro-stacks</strong> (one stack per service — max isolation, highest coordination overhead, warranted only for genuinely independent services). No single prescribed projects-to-stacks ratio.</td></tr>
+<tr><td>Stack-reference blast radius</td><td>Layering reduces per-deploy blast radius (deploy only the changed layer) at the cost of cross-stack coordination — a downstream layer can read a stale upstream output if the two aren't deployed in the right order; layered/micro-stack patterns need an explicit deploy-ordering mechanism, since Pulumi provides none automatically.</td></tr>
+<tr><td>CI/CD shape</td><td>Preview-then-apply gating is standard: <code>preview</code> as a required PR check, <code>up</code> gated behind branch-protected merge/manual approval. Pulumi Deployments (Cloud/Enterprise) runs these in an isolated managed environment instead of a self-hosted runner. Drift detection is a separate scheduled job (<code>refresh --preview-only --expect-no-changes</code>, or the Cloud-native scheduled Drift feature). <code>up --diff</code> renders the rich diff for human review during apply.</td></tr>
+<tr><td>State backend choice at scale</td><td>DIY (S3/Blob/GCS) avoids SaaS dependency and per-seat cost but pushes locking, history, RBAC, and secrets-provider key management entirely onto the platform team. Pulumi Cloud (or self-hosted Pulumi Cloud) centralizes all of it as a managed service — tradeoff is SaaS dependency (or shifted-but-retained operational burden if self-hosted) vs. DIY's lower-level, roll-your-own operability.</td></tr>
+<tr><td>RBAC/team scaling</td><td>Teams-based RBAC is unified across stacks, ESC environments, and Insights in one control plane, but Teams is gated to Enterprise/Business Critical tiers — a real procurement input for large orgs planning fine-grained org-scale access control.</td></tr>
+<tr><td>Multi-region / DR</td><td>No built-in multi-region primitive — region is just a provider config value per stack; DR pattern is deploying the same program against a second region's stack, or a component that provisions both. Backup is the state backend's own versioning (S3/GCS/Blob object versioning, or Pulumi Cloud's built-in checkpoint history) — there is no separate "Pulumi backup" product.</td></tr>
+<tr><td>When NOT to use Pulumi</td><td><em>(reasoned from Pulumi's own comparison docs, not a verbatim vendor statement)</em> — vs. Terraform/OpenTofu: an org standardized on HCL-only tooling (Sentinel, module registries, existing HCL codebase) gains little from adding a language-runtime dependency to every CI runner. vs. AWS CDK/CloudFormation: an AWS-only shop already invested in StackSets/Change Sets may prefer CloudFormation's automatic rollback-on-failure semantics over Pulumi's scriptable-but-manual-reconciliation model. vs. raw CloudFormation: small, single-account, single-team, AWS-only footprints that want zero external state-backend to operate are better served staying cloud-native, at the cost of single-cloud lock-in.</td></tr>
+</tbody></table>
+
+<!-- ============================ SECTION 7 ============================ -->
+<h2>7. Q&amp;A — Rapid-Fire Talking Points</h2>
+<div class="tips">
+<p><strong>Pulumi vs. Terraform, the core difference?</strong> — Both are declarative execution engines under the hood; the difference is the authoring layer — general-purpose languages (loops, classes, package managers) vs. Terraform's HCL DSL.</p>
+<p><strong>How does Pulumi get multi-language support?</strong> — Providers are gRPC services driven by a schema describing resources/inputs/outputs; codegen turns that one schema into per-language SDKs. Not N native reimplementations per provider.</p>
+<p><strong>Provider vs. resource?</strong> — A provider is the plugin (gRPC binary) implementing Configure/Diff/Create/Update/Delete/GetSchema for a platform; a resource is a single managed object the provider knows how to CRUD.</p>
+<p><strong>Why does state matter, and what if you lose it?</strong> — State correlates code to real cloud IDs, which is what makes <code>up</code> a diff instead of blind recreation. Losing it means no automatic recovery of destroyed resources — recover via a backup export/import, Pulumi Cloud's restore-deleted-stack, or manual re-import of every resource. DIY backends get zero automatic recovery; you own backup/versioning.</p>
+<p><strong>How do you avoid drift?</strong> — Scheduled <code>pulumi refresh --preview-only --expect-no-changes</code> (CI cron or Pulumi Deployments' Drift trigger); Cloud can optionally auto-remediate with <code>up --refresh</code> when drift is found.</p>
+<p><strong>What forces replacement vs. in-place update?</strong> — Provider-defined: an input flagged immutable in the provider's <code>Diff</code> forces replace. Default ordering is create-before-replace (minimizes downtime); <code>deleteBeforeReplace</code> flips it for resources that can't coexist.</p>
+<p><strong>Stack references and their limitation?</strong> — <code>StackReference</code> reads another stack's outputs but triggers nothing — Pulumi does not automatically order or cascade cross-stack deploys; teams bolt on ordering via CI pipeline stages.</p>
+<p><strong>Is <code>pulumi up</code> idempotent?</strong> — By design, yes, for a deterministic program with no code/config changes it's a no-op re-run. Not universally guaranteed — depends on program determinism; one-shot operations like <code>import</code> are not idempotent.</p>
+<p><strong>How do secrets work?</strong> — Config values marked <code>--secret</code> are encrypted per-value at rest under a pluggable backend (Cloud default, local passphrase, or cloud KMS/Vault via provider URL scheme).</p>
+<p><strong>Pulumi ESC vs. plain stack config?</strong> — ESC is a centralized, composable config/secrets service that can pull dynamically from Secrets Manager/Vault/1Password and mint short-lived OIDC cloud credentials, feeding stack config or env vars; explicit stack config still wins over ESC on a key conflict.</p>
+<p><strong>How do you do zero-downtime changes?</strong> — Default create-before-delete replacement, <code>protect: true</code> to block accidental deletes; blue-green (parallel services/target groups) is hand-rolled in Pulumi code, not a built-in primitive.</p>
+<p><strong>How do you test Pulumi code?</strong> — Three tiers: unit tests with in-process mocks replacing provider gRPC calls (native test framework, no cloud creds, milliseconds); policy packs/property tests seeing real input/output values during preview/up; integration tests that deploy-verify-destroy against real cloud.</p>
+<p><strong>Automation API use cases?</strong> — Self-service internal platforms, multi-tenant SaaS provisioning, Backstage-style developer portals, custom infra APIs — anywhere you want <code>up</code>/<code>preview</code>/<code>destroy</code> called from your own app instead of shelling out.</p>
+<p><strong>Where does CrossGuard actually enforce?</strong> — Both <code>preview</code> (batches all violations into a report) and <code>up</code> (halts on the first mandatory violation before that resource touches the cloud) — genuinely pre-apply, per-resource, not a post-hoc scan.</p>
+</div>
+
+<!-- ============================ SECTION 8 ============================ -->
+<h2>8. Lesser-Known Facts &amp; Pro Tips</h2>
+<table><colgroup><col class="col-cmd"><col class="col-desc"></colgroup>
+<thead><tr><th>Fact / knob</th><th>Why it's useful</th></tr></thead>
+<tbody>
+<tr><td><code>retainOnDelete: true</code></td><td>Skips the provider's Delete call entirely — the cloud resource survives, only Pulumi's record of it goes away. Different from <code>protect</code>: use it to deliberately hand a resource off to be managed another way.</td></tr>
+<tr><td><code>deleteBeforeReplace: true</code></td><td>Cascades to dependent resources, which can add real downtime — apply narrowly to the specific resource that needs it, not globally.</td></tr>
+<tr><td><code>additionalSecretOutputs</code></td><td>Custom-resource-only; augments (doesn't replace) Pulumi's automatic secret-inference — marks an output secret that Pulumi wouldn't otherwise infer, e.g. a generated password a provider returns that isn't itself a secret input.</td></tr>
+<tr><td>Secret propagation is transitive but the plaintext still reaches your code</td><td>Combining a secret <code>Output</code> via <code>.apply</code>/<code>Output.all</code> marks the result secret too and keeps it out of state — but the <code>apply</code> callback body receives the plaintext, so a stray <code>console.log</code> inside it still leaks the secret to logs. Pulumi can't police the callback body.</td></tr>
+<tr><td>Config secrets are per-stack, not shared</td><td><code>config set --secret</code> encrypts under that specific stack's key — there's no built-in way to share a secret across stacks/projects except Pulumi ESC.</td></tr>
+<tr><td><code>options.refresh: always</code> in <code>Pulumi.yaml</code></td><td>Forces a refresh before every preview/update/destroy for that project — opt-in, because implicit refresh isn't the default (performance/predictability tradeoff). As of v3.160.0, <code>--run-program</code> on <code>refresh</code>/<code>destroy</code> additionally re-runs your program during those ops (opt-in now, planned default later) — known to interact badly with <code>retainOnDelete</code> in a snapshot-integrity edge case, avoid combining until confirmed fixed on your version.</td></tr>
+<tr><td>CLI-first vs. code-first <code>import</code></td><td>CLI-first auto-sets <code>protect: true</code> on the imported resource; code-first/bulk import via <code>preview --import-file</code> does not — add the protect option yourself or a freshly-imported prod resource is one careless <code>destroy</code> away from deletion.</td></tr>
+<tr><td><code>pulumi destroy</code> has no default scoping</td><td>It destroys the whole stack. Always reach for <code>-t</code>/<code>--exclude</code> for partial operations; the safe teardown sequence is <code>destroy</code> → confirm empty → <code>stack remove</code> (without <code>--force</code>, which refuses if resources remain — that refusal is your safety net, don't route around it casually).</td></tr>
+<tr><td><code>dependsOn</code> vs. implicit dependencies</td><td>Pulumi infers ordering automatically whenever one resource's Output feeds another's input — that's the default and preferred path. Reach for explicit <code>dependsOn</code> only for orderings Pulumi can't see (IAM propagation delay, a non-Pulumi-tracked dependency); overusing it needlessly serializes deploys that could run in parallel.</td></tr>
+<tr><td>Every CLI flag has an env-var equivalent (v3.208.0+)</td><td><code>PULUMI_OPTION_&lt;SNAKE_CASE_FLAG&gt;</code> (e.g. <code>PULUMI_OPTION_VERBOSE=9</code>, <code>PULUMI_OPTION_PARALLEL=4</code>) — the fix for CI systems that can't easily inject extra CLI args per step.</td></tr>
+</tbody></table>
+<div class="tips">
+<p><strong>Pin plugin versions in CI</strong> — assert expected provider versions with <code>pulumi plugin list</code> before a deploy job runs; a silent minor-version drift is a common source of "why did this diff appear out of nowhere."</p>
+<p><strong>Treat <code>replaceOnChanges</code> as a K8s-provider escape hatch first</strong> — it exists specifically because the generic Kubernetes provider can't know which fields a given CRD treats as immutable; reach for it there before assuming you need it elsewhere.</p>
+<p><strong>Use <code>requireOutput</code>, not <code>getOutput</code>, for anything mandatory</strong> — a missing required upstream output should fail the deploy loudly in CI, not silently propagate <code>undefined</code>.</p>
+</div>
+
+<!-- ============================ SECTION 9 ============================ -->
+<h2>9. Ecosystem &amp; Integrations</h2>
+
+<h3>GitOps / continuous delivery</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Pulumi Deployments</strong></td><td>Pulumi's own managed CD: PR-preview comments, scheduled drift, webhooks, isolated run environment</td><td>Documented as complementary to, not a replacement for, GitHub Actions/GitLab CI — it runs alongside your existing pipeline, not instead of it <span class="note">[Enterprise/Business Critical]</span></td></tr>
+<tr><td><strong>GitHub Actions / GitLab CI / CircleCI / Jenkins / Azure Pipelines</strong></td><td>Run <code>preview</code>/<code>up</code> as pipeline steps</td><td><code>pulumi/setup-pulumi</code> official action installs the CLI; official guides exist for a dozen-plus CI systems</td></tr>
+<tr><td><strong>Spacelift</strong></td><td>Multi-IaC orchestration (Terraform/OpenTofu/Pulumi/Ansible/CloudFormation) with PR automation and policy</td><td>Confirmed native Pulumi support</td></tr>
+<tr><td><strong>env0</strong></td><td>Multi-IaC control plane incl. Pulumi</td><td>Independent reviews note its Pulumi support trails its Terraform/OpenTofu support — validate before betting on it <span class="note">[⚠ unverified depth]</span></td></tr>
+<tr><td>Atlantis-style PR-comment plan/apply</td><td>No official first-party equivalent</td><td><code>runatlantis/atlantis</code> is Terraform-only by design; third-party GitHub Actions claiming Atlantis-like behavior for Pulumi could not be confirmed as maintained/adopted <span class="note">[⚠ unverified/niche]</span></td></tr>
+</tbody></table>
+
+<h3>Policy &amp; supply chain</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Pulumi CrossGuard</strong></td><td>Native policy-as-code, TS/Python or OPA/Rego, pre-apply enforcement</td><td>The framework itself, not a star-driven external product — see §1/§7 for mechanics</td></tr>
+<tr><td><strong>OPA</strong> <span class="note">[CNCF Graduated]</span></td><td>General policy engine</td><td>CrossGuard has a native Rego integration — same policy language, two entry points</td></tr>
+<tr><td><strong>Conftest</strong></td><td>OPA-based static checks against <code>pulumi preview --json</code>-style output</td><td>Same Rego model as CrossGuard's OPA mode — genuinely usable as a pre-merge gate</td></tr>
+<tr><td>Checkov / tfsec</td><td>No Pulumi-native equivalent found</td><td>Both are Terraform/CloudFormation-plan scanners; Pulumi's answer to static security scanning is CrossGuard + Insights' pre-built compliance packs (CIS/NIST/PCI-DSS/HITRUST) — do not claim Checkov "supports" Pulumi</td></tr>
+<tr><td>Sigstore / cosign</td><td>Pulumi ships a <code>cosign</code> <em>provider</em> (<code>cosign.Sign</code>/<code>Attest</code>) for signing OCI artifacts you build via Pulumi</td><td>This signs <em>your</em> workload images through Pulumi, not Pulumi's own provider-plugin binaries — no evidence Pulumi's plugin distribution itself is cosign-signed <span class="note">[⚠ unverified]</span>. Sigstore is OpenSSF/Linux Foundation, not CNCF, despite landscape listing.</td></tr>
+</tbody></table>
+
+<h3>Secrets &amp; identity</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>HashiCorp Vault</strong></td><td>Pulumi secrets-provider backend (<code>hashivault://</code>) and an ESC dynamic-secrets source</td><td>Not a CNCF project (HashiCorp/IBM); positioned by Pulumi as complementary to ESC, not competing — ESC can pull <em>from</em> Vault</td></tr>
+<tr><td><strong>AWS KMS / Azure Key Vault / GCP KMS</strong></td><td>Native per-stack state-encryption backends</td><td>Set once at <code>pulumi stack init --secrets-provider</code>; changing later re-encrypts via <code>change-secrets-provider</code></td></tr>
+<tr><td><strong>Pulumi ESC</strong></td><td>Centralized config/secrets orchestration above stack config; dynamic secrets + OIDC-minted short-lived cloud credentials</td><td>Complementary to Vault rather than a replacement — see §1</td></tr>
+<tr><td><strong>OIDC in CI</strong> (<code>pulumi/auth-actions</code>)</td><td>Exchanges a CI OIDC token for a short-lived Pulumi Cloud token; ESC mints short-lived AWS/Azure/GCP creds dynamically</td><td>Real, documented pattern — no long-lived cloud keys need to live in CI secrets at all</td></tr>
+</tbody></table>
+
+<h3>Observability</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><strong>Pulumi Insights</strong></td><td>Cloud-account resource discovery (incl. non-Pulumi-managed resources) + continuous policy compliance scoring</td><td>Self-hostable per Pulumi's own documentation <span class="note">[Enterprise/Business Critical]</span></td></tr>
+<tr><td>Scheduled drift jobs</td><td><code>pulumi refresh --preview-only</code> on a cron</td><td>Built-in scheduling only inside Pulumi Cloud/Deployments ("Schedules → Drift"); on a DIY backend you own the cron yourself</td></tr>
+<tr><td><code>pulumi preview --json</code> → Prometheus/Datadog</td><td>Structured plan output parseable for custom pipeline-health metrics</td><td>DIY integration pattern — the JSON output is real and documented, but no first-party Datadog/Prometheus exporter ships <span class="note">[⚠ unverified as off-the-shelf]</span></td></tr>
+</tbody></table>
+
+<h3>Backup / DR</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td>S3 / GCS / Azure Blob versioning</td><td>Historical state recovery for DIY backends</td><td>Combine with the built-in file-locking every DIY backend already has — unlike Terraform, no separate lock-table service is needed</td></tr>
+<tr><td>Pulumi Cloud checkpoint history</td><td>Automatic versioning + "restore deleted stack" console action</td><td>Only covers Pulumi Cloud-managed state, not DIY backends</td></tr>
+</tbody></table>
+
+<h3>Multi-tool / migration</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><code>pulumi convert</code></td><td>Converts Terraform HCL (incl. modules), Bicep, ARM, or Kubernetes manifests into a Pulumi language</td><td>Self-reported ~90-95% auto-conversion for typical Terraform projects, remainder flagged as TODOs — vendor-sourced figure, not independently benchmarked</td></tr>
+<tr><td><strong>Crossplane</strong> <span class="note">[CNCF Graduated]</span></td><td>Kubernetes-native control-plane IaC (CRDs + in-cluster reconciliation)</td><td>Competing model for K8s-centric shops, complementary elsewhere — a Pulumi program can itself install and operate Crossplane</td></tr>
+<tr><td>AWS CDK / CDK for Terraform (CDKTF)</td><td>Same "real language" pitch as Pulumi</td><td>CDK is CloudFormation-only (AWS-locked); CDKTF is Terraform-backed (HCL provider ecosystem, Terraform state/locking); Pulumi differentiates by being multi-cloud-native rather than a codegen layer over one backend</td></tr>
+</tbody></table>
+
+<h3>Packaging &amp; platform management</h3>
+<table><colgroup><col style="width:19%"><col style="width:25%"><col style="width:56%"></colgroup>
+<thead><tr><th>Tool</th><th>Role</th><th>Integration note / gotcha</th></tr></thead>
+<tbody>
+<tr><td><code>pulumi package add terraform-provider</code></td><td>Bridges any Terraform/OpenTofu provider into a locally generated typed Pulumi SDK on the fly</td><td>Backed by <code>pulumi/pulumi-terraform-bridge</code> — works even for providers with zero pre-built Pulumi package, no upfront bridging work required</td></tr>
+<tr><td><strong>Pulumi Backstage plugin</strong></td><td>Surfaces stack activity in the Backstage catalog; adds <code>pulumi:new</code>/<code>pulumi:up</code> scaffolder actions</td><td>Pulumi-maintained, not community-only</td></tr>
+<tr><td>Automation API-powered IDPs</td><td>Custom internal platforms exposing Pulumi behind REST/gRPC</td><td>Real pattern for multi-tenant provisioning; specific productivity-multiplier marketing claims are vendor-sourced, not independently verified</td></tr>
+</tbody></table>
+
+</body>
+</html>

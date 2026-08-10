@@ -87,6 +87,8 @@
       <li><a href="#diff">Diffs</a></li>
       <li><a href="#tables">Tables</a></li>
       <li><a href="#media">Images &amp; figures</a></li>
+      <li><a href="#gallery">Image gallery + lightbox</a></li>
+      <li><a href="#av">Audio &amp; video</a></li>
       <li><a href="#quotes">Quotes</a></li>
       <li><a href="#callouts">Callouts</a></li>
       <li><a href="#cards">Cards &amp; grid</a></li>
@@ -272,6 +274,69 @@ worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</sp
     </figure>
   </div>
 
+  <h2 class="sec" id="gallery">Image gallery + lightbox</h2>
+  <p class="hint">
+    Thumbnails in a grid; click one to maximize it. <strong>Click a thumbnail below — it works on this page.</strong>
+    Arrow keys page through, <kbd>Esc</kbd> closes. The <code>&lt;a href&gt;</code> points at the full-size
+    image, so with JavaScript off the thumbnail still opens it normally. Default is 3 columns —
+    add <code>class="gallery wide"</code> for 2 or <code>class="gallery tight"</code> for 4.
+    Load <code>js/lightbox.js</code> once at the end of the post.
+  </p>
+  <div class="demo">
+    <div class="gallery">
+      <figure>
+        <a href="images/resume-full-3.jpg"><img src="images/resume-full-3.jpg" alt="First board shot"></a>
+        <figcaption>Caption under the thumbnail.</figcaption>
+      </figure>
+      <figure>
+        <a href="images/resume-full-4.jpg"><img src="images/resume-full-4.jpg" alt="Second board shot"></a>
+        <figcaption>Captions are optional.</figcaption>
+      </figure>
+      <figure>
+        <a href="images/resume-full-5.jpg"><img src="images/resume-full-5.jpg" alt="Third board shot"></a>
+        <figcaption>They show under the maximized image too.</figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <p class="hint">A single image can be zoomable on its own with <code>class="zoom"</code> — no gallery needed:</p>
+  <div class="demo">
+    <figure>
+      <a class="zoom" href="images/photo.jpg"><img src="images/photo.jpg" alt="A standalone zoomable image"></a>
+      <figcaption>Click to maximize.</figcaption>
+    </figure>
+  </div>
+
+  <h2 class="sec" id="av">Audio &amp; video</h2>
+  <p class="hint">
+    Native <code>&lt;audio&gt;</code> and <code>&lt;video&gt;</code> controls on purpose — keyboard and
+    screen-reader support for free, and nothing to maintain. Keep
+    <code>preload="none"</code> so the page stays light until someone presses play.
+    <em>The players below have no <code>src</code> (there is no sample media in the repo), so they render
+    empty — point <code>src</code> at a real file and they work.</em>
+  </p>
+  <div class="demo">
+    <figure class="audio">
+      <figcaption>Episode 1 — what the pager sounded like</figcaption>
+      <audio controls preload="none" src="media/example.mp3"></audio>
+    </figure>
+  </div>
+
+  <p class="hint">Video, with a poster frame so it looks right before it loads:</p>
+  <div class="demo">
+    <figure class="video">
+      <video controls preload="none" poster="images/photo.jpg" src="media/example.mp4"></video>
+      <figcaption>A caption for the clip.</figcaption>
+    </figure>
+  </div>
+
+  <p class="hint">For anything in an iframe — YouTube, asciinema — <code>.embed</code> keeps a 16:9 box that scales:</p>
+  <div class="demo">
+    <div class="embed">
+      <iframe src="about:blank" title="Embedded player placeholder" loading="lazy" allowfullscreen></iframe>
+    </div>
+  </div>
+
   <h2 class="sec" id="quotes">Quotes</h2>
   <div class="demo">
     <blockquote>
@@ -395,6 +460,8 @@ worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</sp
 &lt;!-- drop these two lines if the post has no code --&gt;
 &lt;script src="../js/highlight.min.js"&gt;&lt;/script&gt;
 &lt;script&gt;hljs.highlightAll();&lt;/script&gt;
+&lt;!-- drop this if the post has no gallery or zoomable image --&gt;
+&lt;script src="../js/lightbox.js"&gt;&lt;/script&gt;
 &lt;/body&gt;
 &lt;/html&gt;</pre>
   </div>
@@ -483,5 +550,8 @@ document.querySelectorAll('.copy').forEach(function (btn) {
 // Highlight last, so the snippets above were captured as clean HTML.
 hljs.highlightAll();
 </script>
+<!-- after the snippet generator, so the lightbox binds to the demo galleries
+     and its injected <dialog> never lands inside a captured snippet -->
+<script src="js/lightbox.js"></script>
 </body>
 </html>

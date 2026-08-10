@@ -254,6 +254,109 @@ figcaption      { font-size: .88rem; color: var(--gray); text-align: center; }
 
 hr { border: 0; border-top: 1px solid var(--border); margin: 2rem 0; }
 
+/* --- image gallery ---
+   <div class="gallery">
+     <figure><a href="big.jpg"><img src="thumb.jpg" alt="…"></a><figcaption>…</figcaption></figure>
+   </div>
+   The <a> is the point: with JS off it still opens the full image.
+   js/lightbox.js upgrades it to an overlay. Add class="wide"/"tight" for 2/4 columns. */
+.gallery {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: .8rem;
+  margin: 0 0 1.4rem;
+}
+.gallery.wide  { grid-template-columns: repeat(2, 1fr); }
+.gallery.tight { grid-template-columns: repeat(4, 1fr); }
+
+.gallery figure { margin: 0; }
+.gallery a { display: block; overflow: hidden; border-radius: 8px; }
+.gallery img {
+  width: 100%; aspect-ratio: 4 / 3; object-fit: cover;
+  border-radius: 8px; display: block;
+  transition: transform .18s ease;
+}
+.gallery a:hover img { transform: scale(1.04); }
+.gallery a:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+.gallery figcaption { font-size: .82rem; color: var(--gray); margin-top: .35rem; text-align: left; }
+
+/* single zoomable image outside a gallery: <a class="zoom" href="big.jpg"><img …></a> */
+a.zoom { display: block; cursor: zoom-in; }
+
+/* --- lightbox (native <dialog>, so Esc and focus handling are free) --- */
+dialog.lightbox {
+  border: 0; padding: 0; background: none;
+  max-width: 94vw; max-height: 94vh;
+  overflow: visible;
+  color: #fff;
+}
+dialog.lightbox::backdrop { background: rgba(18,20,24,.92); }
+dialog.lightbox img {
+  display: block; border: 0; border-radius: 8px;
+  max-width: 94vw; max-height: 84vh;
+  width: auto; height: auto;
+  margin: 0 auto;
+}
+dialog.lightbox .cap {
+  margin: .6rem auto 0; text-align: center;
+  font-size: .88rem; color: #cfd6dd; max-width: 60ch;
+}
+dialog.lightbox button {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  background: rgba(0,0,0,.5); color: #fff;
+  border: 1px solid rgba(255,255,255,.25); border-radius: 6px;
+  font: 600 1.1rem/1 var(--sans);
+  padding: .6rem .8rem; cursor: pointer;
+}
+dialog.lightbox button:hover { background: var(--teal); border-color: var(--teal); }
+/* arrows sit inside the image — outside the dialog they clip at the viewport edge */
+dialog.lightbox .prev  { left: .6rem; }
+dialog.lightbox .next  { right: .6rem; }
+dialog.lightbox .close {
+  top: .6rem; right: .6rem; transform: none;
+  font-size: .85rem; padding: .4rem .7rem;
+}
+
+/* --- audio ---
+   <figure class="audio"><figcaption>Title</figcaption>
+     <audio controls preload="none" src="…"></audio></figure>
+   Native controls on purpose: keyboard and screen-reader support for free. */
+figure.audio {
+  margin: 0 0 1.4rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .8rem 1rem;
+}
+figure.audio figcaption {
+  text-align: left; font-weight: 700; color: var(--dark);
+  font-size: .9rem; margin: 0 0 .5rem;
+}
+figure.audio audio { width: 100%; display: block; }
+
+/* --- video ---
+   <figure class="video"><video controls preload="none" poster="…" src="…"></video>
+     <figcaption>…</figcaption></figure>
+   preload="none" keeps the page light until someone presses play. */
+figure.video { margin: 0 0 1.4rem; }
+figure.video video {
+  width: 100%; aspect-ratio: 16 / 9;
+  background: #000; object-fit: contain;
+  border: 1px solid var(--border); border-radius: 8px;
+  display: block;
+}
+figure.video figcaption { margin-top: .5rem; }
+
+/* --- responsive iframe embed (YouTube, asciinema, anything) ---
+   <div class="embed"><iframe …></iframe></div> */
+.embed {
+  aspect-ratio: 16 / 9;
+  margin: 0 0 1.4rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; background: #000;
+}
+.embed iframe, .embed > * { width: 100%; height: 100%; border: 0; display: block; }
+
 /* ---------- post meta ---------- */
 .date  { font-family: var(--mono); font-size: .85rem; color: var(--gray); }
 .tags  { display: flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0 0; padding: 0; list-style: none; }

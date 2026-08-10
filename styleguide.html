@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Style guide — MJH blog</title>
+<link rel="stylesheet" href="blog.css">
+<style>
+  /* Page chrome only — these styles are NOT part of blog.css and are not for posts.
+     ponytail: lives here because it's one page's furniture, not a shared component. */
+  .demo {
+    border: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    border-bottom: 0;
+    padding: 1.2rem;
+    margin-top: 1rem;
+  }
+  .demo > :last-child { margin-bottom: 0; }
+
+  .snipwrap { position: relative; margin: 0 0 2rem; }
+  pre.snip {
+    margin: 0;
+    border-radius: 0 0 8px 8px;
+    background: #fbfbfb;
+    font-size: .8rem;
+    max-height: 22rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .copy {
+    position: absolute; top: .5rem; right: .5rem;
+    font: 600 .72rem/1 var(--sans);
+    letter-spacing: .04em; text-transform: uppercase;
+    color: var(--role); background: #fff;
+    border: 1px solid var(--border); border-radius: 4px;
+    padding: .35rem .6rem; cursor: pointer;
+  }
+  .copy:hover  { color: var(--teal); border-color: var(--teal); }
+  .copy.done   { color: #fff; background: var(--teal); border-color: var(--teal); }
+
+  h2.sec {
+    margin-top: 3rem; padding-top: 1.2rem;
+    border-top: 2px solid var(--border);
+  }
+  .hint { font-size: .9rem; color: var(--gray); margin: .2rem 0 0; }
+</style>
+</head>
+<body>
+<nav>
+  <div class="wrap wide">
+    <span class="brand"><a href="index.html">MJH</a></span>
+    <span class="links">
+      <a href="resume_short.html">Resume</a>
+      <a href="blog.html">Blog</a>
+      <a href="styleguide.html">Styles</a>
+    </span>
+  </div>
+</nav>
+
+<div class="wrap wide">
+<article>
+
+  <span class="date">Component catalog</span>
+  <h1 class="page"><span class="hl">/</span> Style guide</h1>
+
+  <p class="lead">Everything <code>blog.css</code> supports. Find what you want, hit Copy, paste it into your post.</p>
+
+  <div class="note">
+    <p class="ttl">How to use</p>
+    <p>Start from <code>blog/_template.html</code> — copy it to <code>blog/&lt;slug&gt;.html</code>. It already links
+    the stylesheet with <code>&lt;link rel="stylesheet" href="../blog.css"&gt;</code>.</p>
+    <p><strong>Most things need no class at all.</strong> Plain <code>&lt;p&gt;</code>, <code>&lt;h2&gt;</code>,
+    <code>&lt;ul&gt;</code>, <code>&lt;table&gt;</code>, <code>&lt;pre&gt;</code> and <code>&lt;img&gt;</code> are
+    already styled. Classes below exist only where HTML has no tag for the idea.</p>
+  </div>
+
+  <div class="toc">
+    <p class="ttl">On this page</p>
+    <ul>
+      <li><a href="#text">Text &amp; headings</a></li>
+      <li><a href="#lists">Lists</a></li>
+      <li><a href="#code">Code &amp; keys</a></li>
+      <li><a href="#codeblocks">Code blocks with a filename</a></li>
+      <li><a href="#highlight">Syntax highlighting</a></li>
+      <li><a href="#shell">Shell / terminal sessions</a></li>
+      <li><a href="#logs">Logs</a></li>
+      <li><a href="#diff">Diffs</a></li>
+      <li><a href="#tables">Tables</a></li>
+      <li><a href="#media">Images &amp; figures</a></li>
+      <li><a href="#quotes">Quotes</a></li>
+      <li><a href="#callouts">Callouts</a></li>
+      <li><a href="#cards">Cards &amp; grid</a></li>
+      <li><a href="#meta">Post meta, badges, TOC</a></li>
+      <li><a href="#misc">Footnotes, back link, utilities</a></li>
+      <li><a href="#index">Post index row</a></li>
+      <li><a href="#skeleton">Full post skeleton</a></li>
+    </ul>
+  </div>
+
+
+  <h2 class="sec" id="text">Text &amp; headings</h2>
+  <p class="hint">No classes. Just write the tags.</p>
+  <div class="demo">
+    <h1>Heading level 1</h1>
+    <h2>Heading level 2</h2>
+    <h3>Heading level 3</h3>
+    <h4>Heading level 4</h4>
+    <p class="lead">A lead paragraph — the hook right under the title.</p>
+    <p>A normal paragraph with <strong>bold text</strong>, <em>italic text</em>, a
+    <a href="#text">link</a>, and <small>small print</small>.</p>
+    <p class="muted">A muted paragraph, for asides.</p>
+    <hr>
+    <p class="center">Centered text.</p>
+  </div>
+
+  <h2 class="sec" id="lists">Lists</h2>
+  <div class="demo">
+    <ul>
+      <li>Unordered item</li>
+      <li>Another item
+        <ul><li>Nested item</li></ul>
+      </li>
+    </ul>
+    <ol>
+      <li>First step</li>
+      <li>Second step</li>
+    </ol>
+    <ul class="check">
+      <li>Checklist item, ticked</li>
+      <li>Another done thing</li>
+    </ul>
+  </div>
+
+  <h2 class="sec" id="code">Code &amp; keys</h2>
+  <div class="demo">
+    <p>Inline <code>git rebase -i</code> sits in the text. Press <kbd>Ctrl</kbd> + <kbd>W</kbd> then <kbd>V</kbd>.</p>
+    <pre><code>$ kubectl get pods -n prod
+NAME             READY   STATUS
+api-7d9f-4kx2z   1/1     Running</code></pre>
+  </div>
+
+  <h2 class="sec" id="codeblocks">Code blocks with a filename</h2>
+  <p class="hint">Wrap any <code>&lt;pre&gt;</code> in <code>.code</code> and put the filename in <code>.code-ttl</code>. Add <code>class="code-ttl ink"</code> when the block below it is dark.</p>
+  <div class="demo">
+    <div class="code">
+      <p class="code-ttl">docker-compose.yml</p>
+      <pre><code class="language-yaml">services:
+  api:
+    image: ghcr.io/acme/api:1.4.2
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+      interval: 10s</code></pre>
+    </div>
+  </div>
+
+  <h2 class="sec" id="highlight">Syntax highlighting</h2>
+  <p class="hint">
+    Name the language on the <code>&lt;code&gt;</code> tag — <code>class="language-go"</code> — and
+    highlight.js colors it. The library is vendored at <code>js/highlight.min.js</code> (no CDN, works
+    offline); the two script lines are already in the template. <strong>38 languages</strong> including
+    <code>bash</code> <code>yaml</code> <code>json</code> <code>dockerfile</code> <code>nginx</code>
+    <code>go</code> <code>rust</code> <code>python</code> <code>sql</code> <code>diff</code>
+    <code>ini</code> <code>typescript</code>. Opt a block out with <code>class="nohighlight"</code>.
+  </p>
+  <div class="demo">
+    <pre><code class="language-python">def backoff(attempt: int, cap: float = 30.0) -> float:
+    """Exponential backoff with a ceiling."""
+    return min(cap, 2 ** attempt * 0.1)</code></pre>
+  </div>
+
+  <p class="hint">Dark variant — add <code>class="ink"</code> to the <code>&lt;pre&gt;</code>. Same token palette, tuned for the dark surface.</p>
+  <div class="demo">
+    <div class="code">
+      <p class="code-ttl ink">main.go</p>
+      <pre class="ink"><code class="language-go">func main() {
+    srv := &http.Server{Addr: ":8080", Handler: mux}
+    if err := srv.ListenAndServe(); err != nil {
+        log.Fatalf("server died: %v", err)
+    }
+}</code></pre>
+    </div>
+  </div>
+
+  <p class="hint">A config file, highlighted the same way:</p>
+  <div class="demo">
+    <div class="code">
+      <p class="code-ttl">Dockerfile</p>
+      <pre><code class="language-dockerfile">FROM golang:1.23-alpine AS build
+WORKDIR /src
+COPY . .
+RUN go build -o /bin/api ./cmd/api
+
+FROM alpine:3.20
+COPY --from=build /bin/api /bin/api
+ENTRYPOINT ["/bin/api"]</code></pre>
+    </div>
+  </div>
+
+  <h2 class="sec" id="shell">Shell / terminal sessions</h2>
+  <p class="hint">
+    <code>&lt;pre class="shell"&gt;</code>. Mark each command with <code>.cmd</code> — the
+    <code>$</code> prompt is drawn by CSS, so don't type it. Use <code>.cmd.root</code> for a
+    <code>#</code> prompt, <code>.out</code> for output, <code>.cm</code> for comments, and
+    <code>.hl</code> to make one value pop.
+  </p>
+  <div class="demo">
+<pre class="shell"><span class="cmd">kubectl get pods -n prod</span><span class="out">NAME                    READY   STATUS             RESTARTS
+api-7d9f-4kx2z          1/1     Running            0
+worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</span>
+<span class="cm"># tail the unhappy one</span><span class="cmd">kubectl logs worker-5c8b-9mtq1 --previous</span></pre>
+  </div>
+  <p class="hint">With a title bar, and a root prompt:</p>
+  <div class="demo">
+    <div class="code">
+      <p class="code-ttl ink">bootstrap.sh</p>
+<pre class="shell"><span class="cmd root">apt-get install -y containerd</span><span class="cmd root">systemctl enable --now containerd</span><span class="out">Created symlink /etc/systemd/system/multi-user.target.wants/containerd.service</span></pre>
+    </div>
+  </div>
+
+  <h2 class="sec" id="logs">Logs</h2>
+  <p class="hint">
+    <code>&lt;pre class="log"&gt;</code>. Timestamps use <code>.ts</code>, severities use
+    <code>.lv-debug</code> / <code>.lv-info</code> / <code>.lv-warn</code> / <code>.lv-error</code> /
+    <code>.lv-fatal</code>. Long lines wrap instead of scrolling.
+  </p>
+  <div class="demo">
+<pre class="log"><span class="ts">10:04:09.117</span> <span class="lv-debug">DEBUG</span> flink-taskmanager Slot request 7 acknowledged
+<span class="ts">10:04:11.204</span> <span class="lv-info">INFO </span> flink-jobmanager  Job 3f2a checkpoint 812 completed in 1.2s
+<span class="ts">10:04:12.881</span> <span class="lv-warn">WARN </span> flink-taskmanager Backpressure on operator <span class="dim">KeyedProcess -&gt; Sink</span>
+<span class="ts">10:04:19.032</span> <span class="lv-error">ERROR</span> flink-taskmanager Connection to 10.2.4.19:6123 refused
+<span class="ts">10:04:19.101</span> <span class="lv-fatal">FATAL</span> flink-jobmanager  Job 3f2a failed after 4 restart attempts</pre>
+  </div>
+
+  <h2 class="sec" id="diff">Diffs</h2>
+  <p class="hint">Paste raw <code>git diff</code> output into <code>class="language-diff"</code> — nothing to mark up by hand.</p>
+  <div class="demo">
+    <div class="code">
+      <p class="code-ttl">deployment.yaml</p>
+      <pre><code class="language-diff">@@ -12,7 +12,7 @@ spec:
+   resources:
+     limits:
+-      memory: "512Mi"
++      memory: "1Gi"
+     requests:
+       cpu: "250m"</code></pre>
+    </div>
+  </div>
+
+  <h2 class="sec" id="tables">Tables</h2>
+  <p class="hint">Plain <code>&lt;table&gt;</code> for data. <code>class="cheat"</code> for two-column key/value lists.</p>
+  <div class="demo">
+    <table>
+      <thead><tr><th>Signal</th><th>Threshold</th><th>Action</th></tr></thead>
+      <tbody>
+        <tr><td>p99 latency</td><td>&gt; 500ms</td><td>Page on-call</td></tr>
+        <tr><td>Error rate</td><td>&gt; 1%</td><td>Roll back</td></tr>
+      </tbody>
+    </table>
+    <table class="cheat">
+      <tr><td><code>:wq</code></td><td>write and quit</td></tr>
+      <tr><td><code>C-w hjkl</code></td><td>change window</td></tr>
+    </table>
+  </div>
+
+  <h2 class="sec" id="media">Images &amp; figures</h2>
+  <p class="hint"><code>class="hero"</code> for the image under the title, <code>class="plain"</code> to drop the border, <code>&lt;figure&gt;</code> to add a caption.</p>
+  <div class="demo">
+    <img src="images/vim-cheatsheet.svg" alt="Example image">
+    <figure>
+      <img src="images/vim-cheatsheet.svg" alt="Example image">
+      <figcaption>A caption explaining the diagram.</figcaption>
+    </figure>
+  </div>
+
+  <h2 class="sec" id="quotes">Quotes</h2>
+  <div class="demo">
+    <blockquote>
+      <p>Everything fails all the time.</p>
+      <cite>— Werner Vogels</cite>
+    </blockquote>
+  </div>
+
+  <h2 class="sec" id="callouts">Callouts</h2>
+  <p class="hint">Four flavours. The <code>&lt;p class="ttl"&gt;</code> heading line is optional.</p>
+  <div class="demo">
+    <div class="note">
+      <p class="ttl">Note</p>
+      <p>Neutral aside — background the reader can skip.</p>
+    </div>
+    <div class="tip">
+      <p class="ttl">Tip</p>
+      <p>Something that saves the reader time.</p>
+    </div>
+    <div class="warn">
+      <p class="ttl">Careful</p>
+      <p>A sharp edge worth knowing about before you hit it.</p>
+    </div>
+    <div class="danger">
+      <p class="ttl">Don't</p>
+      <p>This will page someone at 3am.</p>
+    </div>
+    <div class="note"><p>A callout with no title works fine too.</p></div>
+  </div>
+
+  <h2 class="sec" id="cards">Cards &amp; grid</h2>
+  <p class="hint">Two columns, collapsing to one under 620px. An <code>&lt;a class="card"&gt;</code> is clickable.</p>
+  <div class="demo">
+    <div class="grid">
+      <div class="card">
+        <h3>Plain card</h3>
+        <p>A box for grouping a small idea.</p>
+      </div>
+      <a class="card" href="#cards">
+        <h3>Clickable card</h3>
+        <p>Hover highlights the border.</p>
+      </a>
+    </div>
+  </div>
+
+  <h2 class="sec" id="meta">Post meta, badges, TOC</h2>
+  <div class="demo">
+    <span class="date">2026-08-10</span>
+    <ul class="tags">
+      <li class="tag">kubernetes</li>
+      <li class="tag">sre</li>
+      <li><a class="tag" href="#meta">clickable tag</a></li>
+    </ul>
+    <p>Inline labels: <span class="badge">new</span> <span class="badge gray">draft</span></p>
+    <div class="toc">
+      <p class="ttl">Contents</p>
+      <ul>
+        <li><a href="#meta">First section</a></li>
+        <li><a href="#meta">Second section</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <h2 class="sec" id="misc">Footnotes, back link, utilities</h2>
+  <div class="demo">
+    <p>A claim that needs a source.<a href="#fn1" id="ref1"><sup>1</sup></a></p>
+    <div class="footnotes">
+      <ol>
+        <li id="fn1">The source, with a <a href="#ref1">link back</a>.</li>
+      </ol>
+    </div>
+    <p class="mono">Monospaced line via <code>class="mono"</code>.</p>
+    <a class="back" href="blog.html">&larr; Back to blog</a>
+  </div>
+
+  <h2 class="sec" id="skeleton">Full post skeleton</h2>
+  <p class="hint">The whole file. This is <code>blog/_template.html</code> — copy it and start writing.</p>
+  <div class="snipwrap">
+    <button class="copy" type="button">Copy</button>
+<pre class="snip">&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+&lt;meta charset="utf-8"&gt;
+&lt;meta name="viewport" content="width=device-width, initial-scale=1"&gt;
+&lt;title&gt;Post title — MJH&lt;/title&gt;
+&lt;link rel="stylesheet" href="../blog.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;nav&gt;
+  &lt;div class="wrap"&gt;
+    &lt;span class="brand"&gt;&lt;a href="../index.html"&gt;MJH&lt;/a&gt;&lt;/span&gt;
+    &lt;span class="links"&gt;
+      &lt;a href="../resume_short.html"&gt;Resume&lt;/a&gt;
+      &lt;a href="../blog.html"&gt;Blog&lt;/a&gt;
+      &lt;a href="../index.html#about"&gt;About&lt;/a&gt;
+    &lt;/span&gt;
+  &lt;/div&gt;
+&lt;/nav&gt;
+
+&lt;div class="wrap"&gt;
+  &lt;article&gt;
+    &lt;span class="date"&gt;2026-08-10&lt;/span&gt;
+    &lt;h1&gt;Post title&lt;/h1&gt;
+
+    &lt;img class="hero" src="../images/slug.svg" alt=""&gt;
+
+    &lt;p class="lead"&gt;One-sentence hook that says why this post exists.&lt;/p&gt;
+
+    &lt;h2&gt;First section&lt;/h2&gt;
+    &lt;p&gt;Just write paragraphs. No classes needed.&lt;/p&gt;
+
+    &lt;div class="code"&gt;
+      &lt;p class="code-ttl"&gt;example.yml&lt;/p&gt;
+      &lt;pre&gt;&lt;code class="language-yaml"&gt;replicas: 3&lt;/code&gt;&lt;/pre&gt;
+    &lt;/div&gt;
+
+    &lt;a class="back" href="../blog.html"&gt;&amp;larr; Back to blog&lt;/a&gt;
+  &lt;/article&gt;
+&lt;/div&gt;
+
+&lt;!-- drop these two lines if the post has no code --&gt;
+&lt;script src="../js/highlight.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;hljs.highlightAll();&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;</pre>
+  </div>
+
+  <h2 class="sec" id="index">Post index row</h2>
+  <p class="hint">Not for inside a post — this is the <code>&lt;li&gt;</code> you paste into <code>blog.html</code> to list a new post.</p>
+  <div class="demo">
+    <h1 class="page"><span class="hl">/</span> Blog</h1>
+    <p class="sub">The tagline under a listing-page title.</p>
+    <ul class="posts">
+      <li>
+        <a href="#index">
+          <img class="thumb" src="images/vim-cheatsheet.svg" alt="" loading="lazy">
+          <span>
+            <span class="date">2026-08-10</span>
+            <span class="title">Post title</span>
+            <p class="excerpt">One line describing the post, shown under the title on the index.</p>
+          </span>
+        </a>
+      </li>
+    </ul>
+  </div>
+
+  <p class="muted">Add a component here whenever you add one to <code>blog.css</code> — the snippet writes itself.</p>
+
+</article>
+</div>
+
+<div class="wrap wide"><footer>&copy; Mohammad Javad Hoseini</footer></div>
+
+<script src="js/highlight.min.js"></script>
+<script>
+// Each .demo generates its own snippet, so the two can never drift apart.
+// This runs BEFORE hljs, so copied snippets stay clean of hljs-* spans.
+document.querySelectorAll('.demo').forEach(function (demo) {
+  var lines = demo.innerHTML.replace(/\t/g, '  ').split('\n');
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  var indent = Math.min.apply(null, lines
+    .filter(function (l) { return l.trim(); })
+    .map(function (l) { return l.match(/^ */)[0].length; }));
+  var code = lines.map(function (l) { return l.slice(indent); }).join('\n');
+
+  var pre = document.createElement('pre');
+  pre.className = 'snip';
+  pre.textContent = code;
+
+  var btn = document.createElement('button');
+  btn.className = 'copy';
+  btn.type = 'button';
+  btn.textContent = 'Copy';
+
+  var wrap = document.createElement('div');
+  wrap.className = 'snipwrap';
+  wrap.appendChild(btn);
+  wrap.appendChild(pre);
+  demo.after(wrap);
+});
+
+document.querySelectorAll('.copy').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var pre = btn.parentNode.querySelector('pre');
+    function flash() {
+      btn.textContent = 'Copied';
+      btn.classList.add('done');
+      setTimeout(function () { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1200);
+    }
+    function select() {
+      var r = document.createRange();
+      r.selectNodeContents(pre);
+      var s = getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+      btn.textContent = 'Press Ctrl+C';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 2000);
+    }
+    // clipboard needs a secure context; over file:// fall back to selecting the text
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(pre.textContent).then(flash, select);
+    } else {
+      select();
+    }
+  });
+});
+
+// Highlight last, so the snippets above were captured as clean HTML.
+hljs.highlightAll();
+</script>
+</body>
+</html>

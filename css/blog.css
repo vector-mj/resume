@@ -358,6 +358,46 @@ figure.video video {
 }
 figure.video figcaption { margin-top: .5rem; }
 
+/* --- diagrams (draw.io / diagrams.net, or any SVG) ---
+   Export from draw.io as SVG with "Include a copy of my diagram" ticked: the file
+   stays re-openable in draw.io, but here it is just an image. No library.
+
+   <figure class="diagram">
+     <a class="zoom" href="../images/thing.svg"><img src="../images/thing.svg" alt="…"></a>
+     <figcaption>…</figcaption>
+   </figure>
+
+   The light surface is deliberate and not a theme bug: draw.io draws dark strokes
+   and dark text on a transparent background, which would vanish on the dark theme. */
+figure.diagram { margin: 0 0 1.6rem; }
+figure.diagram a, figure.diagram img { display: block; }
+figure.diagram img {
+  width: 100%; height: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: .9rem;
+}
+figure.diagram figcaption { margin-top: .5rem; }
+
+/* --- interactive draw.io viewer ---
+   <div class="drawio mxgraph" data-mxgraph='{…,"xml":"<mxfile>…"}'></div>
+   plus viewer-static.min.js. Pan by dragging, zoom with the hover toolbar or
+   the wheel, fullscreen via the lightbox button. Read-only: there is no editor
+   in this build, and "edit":null keeps the pencil away.
+   Light surface for the same reason as .diagram — draw.io draws dark on clear. */
+.drawio {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 0 1.6rem;
+  min-height: 8rem;
+  overflow: hidden;
+}
+.drawio svg { max-width: 100%; height: auto; }
+figure.drawio-fig { margin: 0 0 1.6rem; }
+figure.drawio-fig .drawio { margin-bottom: .5rem; }
+
 /* --- responsive iframe embed (YouTube, asciinema, anything) ---
    <div class="embed"><iframe …></iframe></div> */
 .embed {

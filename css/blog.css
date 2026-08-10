@@ -150,6 +150,11 @@ pre code {
   padding: .4rem .8rem;
 }
 .code-ttl + pre { margin: 0; border-radius: 0 0 6px 6px; }
+/* js/enhance.js wraps every <pre> in .copywrap to hang the copy button on it,
+   which breaks the adjacency above and let the block round all four corners
+   under a square-bottomed title bar. Keep the two joined in the wrapped case. */
+.code-ttl + .copywrap { margin: 0; }
+.code-ttl + .copywrap > pre { margin: 0; border-radius: 0 0 6px 6px; }
 /* a dark block under a title bar keeps the bar dark too */
 .code-ttl.ink { color: #b8c2cc; background: var(--ink); border-color: var(--ink); }
 

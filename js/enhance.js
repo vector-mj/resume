@@ -7,7 +7,7 @@
 
   // ---- 1. copy button on every code block -------------------------------
   // .snip is the styleguide's own snippet box, which brings its own button.
-  document.querySelectorAll('pre:not(.snip)').forEach(function (pre) {
+  document.querySelectorAll('pre:not(.snip):not(.nocopy)').forEach(function (pre) {
     if (pre.closest('.copywrap')) return;
 
     var wrap = document.createElement('div');
@@ -126,10 +126,9 @@
       toggle.textContent = dark ? '☀' : '☾';
       toggle.setAttribute('aria-label', dark ? 'Switch to light theme' : 'Switch to dark theme');
     };
-    // with no stored choice, reflect what the system is actually showing
+    // light is the default; dark is only ever an explicit, remembered choice
     if (!document.documentElement.dataset.theme) {
-      document.documentElement.dataset.theme =
-        matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = 'light';
     }
     sync();
     toggle.addEventListener('click', function () {

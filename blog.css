@@ -664,32 +664,9 @@ table.specs td { font-variant-numeric: tabular-nums; }
    Auto by system preference; the [data-theme] attribute wins either way so a
    toggle can override. Only tokens change — no component rule is duplicated.
    ========================================================================= */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg:     #14171a;
-    --navbg:  rgba(20,23,26,.92);
-    --card:   #1c2024;
-    --border: #2b3238;
-    --dark:   #e8ecef;
-    --body:   #c3cad1;
-    --role:   #a8b1b9;
-    --gray:   #8a949d;
-    --teal:   #2ec4a6;
-    --tip-bg:    #14302b;
-    --warn-bg:   #332b12;
-    --danger-bg: #331d1c;
-    --add-bg: #13322a; --add-fg: #7ee2c8;
-    --del-bg: #3a1f1e; --del-fg: #ff9d99;
-    --hl-cmt:  #6f7b86;
-    --hl-key:  #7ee2c8;
-    --hl-str:  #d8b57a;
-    --hl-num:  #e0a06a;
-    --hl-fn:   #7cc4f0;
-    --hl-attr: #9fd0ea;
-    --hl-type: #c4a6f0;
-    --hl-var:  #ff8b80;
-  }
-}
+/* Light is the default on purpose: dark is opt-in via the nav toggle, which
+   sets data-theme="dark" and remembers it. (Deliberately NOT following
+   prefers-color-scheme, so a visitor on a dark OS still lands on light.) */
 :root[data-theme="dark"] {
   --bg:     #14171a;
   --navbg:  rgba(20,23,26,.92);
@@ -699,6 +676,7 @@ table.specs td { font-variant-numeric: tabular-nums; }
   --body:   #c3cad1;
   --role:   #a8b1b9;
   --gray:   #8a949d;
+  --rule:   #3a4249;
   --teal:   #2ec4a6;
   --tip-bg:    #14302b;
   --warn-bg:   #332b12;

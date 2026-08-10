@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How to turn your old USB into something — MJH</title>
+
+<meta name="description" content="Wiring a udev rule to physical USB ports so that plugging a flash drive into a particular socket suspends, reboots, or shuts down a Linux box.">
+<meta property="og:title" content="How to turn your old USB into something">
+<meta property="og:description" content="One flash drive, three ports, three different ways to take a machine down. A udev rule, a shell script, and the logs to prove it.">
+<meta property="og:image" content="https://mjhoseini.com/images/usb-hero.jpg">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="stylesheet" href="../blog.css">
+<script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <span class="brand"><a href="../index.html">MJH</a></span>
+    <span class="links">
+      <a href="../resume_short.html">Resume</a>
+      <a href="../blog.html">Blog</a>
+      <a href="../index.html#about">About</a>
+      <button class="themetoggle" type="button" data-theme-toggle aria-label="Toggle theme">&#9790;</button>
+    </span>
+  </div>
+</nav>
+
+<div class="wrap">
+  <article>
+    <span class="date">2026-08-10</span>
+    <h1>How to turn your old USB into something</h1>
+
+    <img class="hero" src="../images/usb-hero.jpg" alt="A Silicon Power flash drive resting on the RGB-lit mesh panel of a PC case">
+
+    <p class="lead">
+      That 8&nbsp;GB stick in your drawer is too small to be useful and too fine to throw away.
+      So let's give it a job: plug it into one port and the machine suspends, another and it reboots,
+      a third and it shuts down. No keyboard, no SSH — just a physical key you push into a hole.
+    </p>
+
+    <div class="danger">
+      <p class="ttl">Read this bit</p>
+      <p>This deliberately makes a physical port able to power off a running machine. Anyone
+      who can reach the case can take the box down, and an accidental nudge does the same. Do it on a
+      home lab box you can afford to lose — never on anything that matters, and never on anything
+      in a shared or public space.</p>
+    </div>
+
+    <div class="toc" data-auto><p class="ttl">Contents</p></div>
+
+    <h2>The idea</h2>
+    <p>
+      Linux tells userspace about every device that appears, and it tells you <em>where</em> it appeared —
+      the physical port, not just the device. <code>udev</code> can run a script on that event. If the script
+      can read the port number, it can branch on it. That's the whole trick: one drive, several ports,
+      several meanings.
+    </p>
+
+    <figure class="annotated">
+      <img src="../images/usb-ports-front.jpg" alt="The front panel of the PC case: power button, indicator LEDs, a blue USB 3.0 port, a USB 2.0 port, headphone and microphone jacks, and a second USB 2.0 port">
+      <span class="pin" style="left:35.3%; top:56.5%">1</span>
+      <span class="pin" style="left:52.7%; top:56.3%">2</span>
+      <span class="pin" style="left:83%;   top:56.3%">3</span>
+    </figure>
+    <ol class="legend">
+      <li><strong>USB 3.0</strong> — kernel path <code>1-3</code> → <strong>suspend</strong></li>
+      <li><strong>USB</strong> (middle) — kernel path <code>1-6</code> → <strong>reboot</strong></li>
+      <li><strong>USB</strong> (right) — kernel path <code>1-5</code> → <strong>shut down</strong></li>
+    </ol>
+
+    <h2>Find your device</h2>
+    <p>
+      First you need two things: the drive's vendor and product ID, and the port path it lands on.
+      Watch the event stream and plug the drive in:
+    </p>
+
+    <pre class="shell"><span class="cmd">udevadm monitor --property</span></pre>
+
+    <p>Then confirm what the kernel thinks the drive is:</p>
+
+    <pre class="shell"><span class="cmd">lsusb</span><span class="out">Bus 001 Device 001: ID 1d6b:0002 Linux Foundation 2.0 root hub
+Bus 001 Device 009: ID <span class="hl">13fe:3e00</span> Phison Electronics Corp. Flash Drive
+Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub</span></pre>
+
+    <p>
+      There it is: <code>13fe:3e00</code>. Now watch the kernel ring buffer while you plug it in, to see
+      which port path that socket corresponds to:
+    </p>
+
+    <pre class="shell"><span class="cmd">dmesg -Hw</span><span class="out">[ 3424.877813] usb <span class="hl">1-3</span>: new high-speed USB device number 9 using xhci_hcd
+[ 3425.006386] usb 1-3: New USB device found, idVendor=13fe, idProduct=3e00, bcdDevice= 1.00
+[ 3425.006390] usb 1-3: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[ 3425.006391] usb 1-3: Product: Silicon-Power8G
+[ 3425.006392] usb 1-3: Manufacturer: UFD 2.0
+[ 3425.006393] usb 1-3: SerialNumber: 12050650048E60025CB8DD13B3D
+[ 3425.007237] usb-storage 1-3:1.0: USB Mass Storage device detected
+[ 3425.007322] scsi host8: usb-storage 1-3:1.0
+[ 3426.093984] scsi 8:0:0:0: Direct-Access     UFD 2.0  Silicon-Power8G  PMAP PQ: 0 ANSI: 4
+[ 3426.094125] sd 8:0:0:0: Attached scsi generic sg1 type 0
+[ 3427.330539] sd 8:0:0:0: [sdb] 15124992 512-byte logical blocks: (7.74 GB/7.21 GiB)
+[ 3427.331050] sd 8:0:0:0: [sdb] Write Protect is off
+[ 3427.331052] sd 8:0:0:0: [sdb] Mode Sense: 23 00 00 00
+[ 3427.331188] sd 8:0:0:0: [sdb] No Caching mode page found
+[ 3427.331189] sd 8:0:0:0: [sdb] Assuming drive cache: write through
+[ 3427.362655]  sdb: sdb1 sdb2
+[ 3427.362721] sd 8:0:0:0: [sdb] Attached SCSI removable disk</span></pre>
+
+    <p>
+      Repeat for each socket you care about and write down the mapping. Mine came out like this:
+    </p>
+
+    <table class="cheat">
+      <tr><td><code>1-3</code></td><td>front USB 3.0 (blue)</td><td>suspend</td></tr>
+      <tr><td><code>1-6</code></td><td>front USB, middle</td><td>reboot</td></tr>
+      <tr><td><code>1-5</code></td><td>front USB, right</td><td>shut down</td></tr>
+    </table>
+
+    <div class="note">
+      <p>Port paths are a property of the motherboard and its internal wiring, not of the drive.
+      Yours will differ, and they can change if you move the header cable to a different socket.</p>
+    </div>
+
+    <h2>The script</h2>
+    <p>
+      udev hands the script a <code>DEVPATH</code>. The port falls out of it with one regex, and the rest
+      is a <code>case</code> statement.
+    </p>
+
+    <div class="code">
+      <p class="code-ttl">/usr/local/bin/usb_action.sh</p>
+      <pre><code class="language-bash">#!/bin/bash
+
+DEVPATH="$1"
+ACTION="$2"
+
+logger "USB event: Action=$ACTION, DEVPATH=$DEVPATH"
+
+if [ "$ACTION" != "add" ]; then
+    exit 0
+fi
+
+PORT=$(echo "$DEVPATH" | grep -oP 'usb[0-9]+/\K[0-9]+-[0-9]+')
+
+# You can also extract using the full path if ports have more complex numbers
+# PORT=$(echo "$DEVPATH" | awk -F'/' '{print $NF}')
+
+case "$PORT" in
+    "1-5")
+        echo "USB connected to Port 5 - SHUTTING DOWN"
+        logger "USB plugged into Port 5 - Shutting down system"
+        /sbin/shutdown -h now
+        ;;
+    "1-6")
+        echo "USB connected to Port 6 - RESTARTING"
+        logger "USB plugged into Port 6 - Restarting system"
+        /sbin/reboot
+        ;;
+    "1-3")
+        echo "USB connected to Port 3 - SUSPENDING"
+        logger "USB plugged into Port 3 - Suspending system"
+        /usr/bin/systemctl suspend
+        ;;
+    *)
+        echo "USB connected to unknown port: $PORT - No action"
+        ;;
+esac</code></pre>
+    </div>
+
+    <p>Make it executable, or udev will silently do nothing:</p>
+
+    <pre class="shell"><span class="cmd root">chmod +x /usr/local/bin/usb_action.sh</span></pre>
+
+    <h2>The udev rule</h2>
+    <p>
+      One line. Match the drive by vendor and product ID so no other device can trigger it, and pass
+      the device path through to the script.
+    </p>
+
+    <div class="code">
+      <p class="code-ttl">/etc/udev/rules.d/99-usb-port-action.rules</p>
+      <pre><code class="language-bash">ACTION=="add", SUBSYSTEM=="usb", ATTRS{idVendor}=="13fe", ATTRS{idProduct}=="3e00", RUN+="/usr/local/bin/usb_action.sh $env{DEVPATH} add"</code></pre>
+    </div>
+
+    <p>Reload so udev picks it up:</p>
+
+    <pre class="shell"><span class="cmd root">udevadm control --reload-rules</span><span class="cmd root">udevadm trigger</span></pre>
+
+    <h2>It works</h2>
+    <p>
+      Three ports, three photographs, three different ways to end your session. Click any of them
+      to see it full size.
+    </p>
+
+    <div class="gallery">
+      <figure>
+        <a href="../images/usb-suspend.jpg"><img src="../images/usb-suspend.jpg" alt="The flash drive inserted into the blue USB 3.0 port"></a>
+        <figcaption>Port <code>1-3</code> — suspend.</figcaption>
+      </figure>
+      <figure>
+        <a href="../images/usb-restart.jpg"><img src="../images/usb-restart.jpg" alt="The flash drive inserted into the middle USB port"></a>
+        <figcaption>Port <code>1-6</code> — reboot.</figcaption>
+      </figure>
+      <figure>
+        <a href="../images/usb-shutdown.jpg"><img src="../images/usb-shutdown.jpg" alt="The flash drive inserted into the rightmost USB port"></a>
+        <figcaption>Port <code>1-5</code> — shut down.</figcaption>
+      </figure>
+    </div>
+
+    <p>
+      And the receipts, from <code>journalctl</code>. Each block ends the same way, which is the
+      point — that's my SSH session dying because the machine did what it was told:
+    </p>
+
+    <pre class="log">Aug 05 20:14:13 server kernel: usb-storage 1-3:1.0: USB Mass Storage device detected
+Aug 05 20:14:13 server root[12967]: USB event: Action=add, DEVPATH=/devices/pci0000:00/0000:00:14.0/usb1/1-3
+Aug 05 20:14:13 server root[12971]: <span class="lv-warn">USB plugged into Port 3 - Suspending system</span>
+Aug 05 20:14:13 server root[12975]: USB event: Action=add, DEVPATH=/devices/pci0000:00/0000:00:14.0/usb1/1-3/1-3:1.0
+Aug 05 20:14:13 server root[12979]: <span class="lv-warn">USB plugged into Port 3 - Suspending system</span>
+<span class="dim">Connection to server closed by remote host.
+Connection to server closed.</span>
+
+Aug 05 20:19:04 server kernel: usb-storage 1-6:1.0: USB Mass Storage device detected
+Aug 05 20:19:04 server root[13896]: USB event: Action=add, DEVPATH=/devices/pci0000:00/0000:00:14.0/usb1/1-6
+Aug 05 20:19:04 server root[13900]: <span class="lv-warn">USB plugged into Port 6 - Restarting system</span>
+Aug 05 20:19:04 server root[13904]: USB event: Action=add, DEVPATH=/devices/pci0000:00/0000:00:14.0/usb1/1-6/1-6:1.0
+Aug 05 20:19:04 server root[13908]: <span class="lv-warn">USB plugged into Port 6 - Restarting system</span>
+<span class="dim">Connection to server closed by remote host.
+Connection to server closed.</span>
+
+Aug 05 20:20:46 server kernel: usb 1-5: new high-speed USB device number 14 using xhci_hcd
+Aug 05 20:20:46 server kernel: usb 1-5: New USB device found, idVendor=13fe, idProduct=3e00, bcdDevice= 1.00
+Aug 05 20:20:46 server kernel: usb 1-5: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+Aug 05 20:20:46 server kernel: usb-storage 1-5:1.0: USB Mass Storage device detected
+Aug 05 20:20:46 server root[14437]: USB event: Action=add, DEVPATH=/devices/pci0000:00/0000:00:14.0/usb1/1-5
+Aug 05 20:20:46 server root[14441]: <span class="lv-error">USB plugged into Port 5 - Shutting down system</span>
+Aug 05 20:20:46 server root[14445]: USB event: Action=add, DEVPATH=/devices/pci0000:00/0000:00:14.0/usb1/1-5/1-5:1.0
+Aug 05 20:20:46 server root[14449]: <span class="lv-error">USB plugged into Port 5 - Shutting down system</span>
+<span class="dim">Connection to server closed by remote host.
+Connection to server closed.</span></pre>
+
+    <h2>The rough edge</h2>
+    <p>
+      Look closely at those logs and you'll see the script runs <strong>twice</strong> per insertion —
+      once for <code>…/usb1/1-3</code> and once for <code>…/usb1/1-3/1-3:1.0</code>. The first is the USB
+      device, the second is its mass-storage interface, and the rule matches both.
+    </p>
+    <p>
+      It's harmless here, because shutting down twice is just shutting down. But if you ever hang
+      something non-idempotent off this, it will bite. Constrain the rule to the device itself:
+    </p>
+
+    <div class="code">
+      <p class="code-ttl">/etc/udev/rules.d/99-usb-port-action.rules — firing once</p>
+      <pre><code class="language-bash">ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="13fe", ATTRS{idProduct}=="3e00", RUN+="/usr/local/bin/usb_action.sh $env{DEVPATH} add"</code></pre>
+    </div>
+
+    <div class="warn">
+      <p class="ttl">One more thing udev will do to you</p>
+      <p><code>RUN+=</code> is meant for short-lived commands; udev kills long-running ones. Powering the
+      machine off is fast enough to get away with, but if you extend this into anything slower, hand
+      the work to a systemd unit and let the rule just start it.</p>
+    </div>
+
+    <h2>Was it worth it</h2>
+    <p>
+      Not really. That's rather the point. But it is a genuinely good way to learn what
+      <code>udev</code> actually does, and now the drawer drive has a purpose: it's the world's most
+      over-engineered power button.
+    </p>
+
+    <figure>
+      <img src="../images/usb-ports-empty.jpg" alt="The empty front panel of the case, all ports unoccupied">
+      <figcaption>Armed and waiting.</figcaption>
+    </figure>
+
+    <a class="back" href="../blog.html">&larr; Back to blog</a>
+  </article>
+</div>
+
+<script src="../js/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+<script src="../js/enhance.js"></script>
+<script src="../js/lightbox.js"></script>
+</body>
+</html>

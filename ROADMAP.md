@@ -24,8 +24,10 @@ All five shipped in `blog.css` + `js/enhance.js`, demoed in `styleguide.html#enh
    The one thing this blog needs that nobody else's does.
 2. ~~**Copy button on code blocks.**~~ Shipped: automatic on every `<pre>`.
    Copies `innerText`, so the CSS-drawn `$` prompt is not included.
-3. ~~**Dark mode.**~~ Shipped: system default, `[data-theme]` override, nav
-   toggle, and a pre-paint `<head>` snippet so there is no white flash.
+3. ~~**Dark mode.**~~ Shipped: **light default**, dark opt-in via a nav toggle
+   on every page, remembered in `localStorage`, with a pre-paint `<head>`
+   snippet so a saved choice never flashes. Deliberately does not follow
+   `prefers-color-scheme`.
 4. ~~**Auto-TOC + heading anchors.**~~ Shipped: `<div class="toc" data-auto>`
    fills itself; every `h2`/`h3` gets an id and a `¶`.
 5. ~~**Social cards + description meta.**~~ Shipped in `blog/_template.html`.

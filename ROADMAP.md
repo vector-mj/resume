@@ -15,39 +15,38 @@ should ever load all three.
 
 ---
 
-## Tier 1 — build these first
+## Tier 1 — DONE
 
-High value specifically for the kind of posts being written here.
+All five shipped in `blog.css` + `js/enhance.js`, demoed in `styleguide.html#enhance`.
 
-1. **Live filter on cheatsheet tables.** The Vim post is a 60-row table. A search
+1. ~~**Live filter on cheatsheet tables.**~~ Shipped: `<table class="cheat filterable">`. The Vim post is a 60-row table. A search
    box that filters rows as you type: `class="cheat filterable"`. ~12 lines of JS.
    The one thing this blog needs that nobody else's does.
-2. **Copy button on code blocks.** These posts are full of commands people run.
-   Hover-to-copy on every `<pre>`, reusing the pattern already proven in
-   `styleguide.html`. ~15 lines, added once to the template.
-3. **Dark mode.** ~15 lines, because everything is already tokenized.
-   `prefers-color-scheme` plus a nav toggle.
-4. **Auto-TOC + heading anchors.** Generate the `.toc` from `<h2>`s at load
-   instead of maintaining it by hand; add a `¶` anchor on hover so sections are
-   linkable. ~15 lines.
-5. **Social cards + description meta in the template.** Five `<meta>` tags so a
-   shared link renders as a card instead of a naked URL.
+2. ~~**Copy button on code blocks.**~~ Shipped: automatic on every `<pre>`.
+   Copies `innerText`, so the CSS-drawn `$` prompt is not included.
+3. ~~**Dark mode.**~~ Shipped: system default, `[data-theme]` override, nav
+   toggle, and a pre-paint `<head>` snippet so there is no white flash.
+4. ~~**Auto-TOC + heading anchors.**~~ Shipped: `<div class="toc" data-auto>`
+   fills itself; every `h2`/`h3` gets an id and a `¶`.
+5. ~~**Social cards + description meta.**~~ Shipped in `blog/_template.html`.
 
-> Items 1, 2 and 4 add JS that runs on every post and need the same
-> "generate before highlight" ordering care that already caused one bug in the
-> styleguide. Do them in one pass, not dribbled in.
+> They were done in one pass, as planned. Script order matters and is fixed in
+> both the template and the styleguide: highlight → lightbox → enhance, with
+> the styleguide's snippet capture before all three.
 
 ## Tier 2 — real value, more work
 
 - **Mermaid diagrams** for architecture and sequence diagrams. ~1MB, so load it
   only in posts that use it.
 - **Line highlighting in code** (`data-hl="3,5"`) — dim everything but the lines
-  under discussion.
-- **Sticky TOC sidebar** on wide screens. Pure CSS `position: sticky`, no JS.
-- **Print stylesheet.** These are printable cheatsheets; one shared
-  `@media print` block makes every post printable.
-- **Prev/next + series navigation.** The Vim post is literally "Cheatsheet #1".
+  under discussion. *Still open.*
+- ~~**Sticky TOC sidebar**~~ Shipped: `class="toc stick"`, pure CSS.
+- ~~**Print stylesheet.**~~ Shipped: hides nav/buttons/filters, inverts dark code
+  blocks to ink-on-white, keeps tables and figures off page breaks.
+- ~~**Prev/next + series navigation.**~~ Shipped: `.series`, commented into the
+  template.
 - **RSS feed.** Cheap only if `feed.xml` is hand-edited the way `blog.html` is.
+  *Still open.*
 
 ## Tier 3 — mesmerising, heavier
 
@@ -70,6 +69,9 @@ a retry storm *is* a nonlinear map. That intersection is underwritten.
 
 ## Item zero: math rendering
 
+**Status: container and `.eqn` shipped; the library is deliberately not
+vendored** — import it per post from the snippet in the template footer.
+
 **KaTeX, not MathJax.** Self-hosted (~270KB), renders synchronously with no
 layout flash, and its auto-render extension turns `$...$` and `$$...$$` into
 math with two script lines — same opt-in pattern as highlight.js. Add a numbered
@@ -77,6 +79,10 @@ math with two script lines — same opt-in pattern as highlight.js. Add a number
 algebra are unwritable without this.
 
 ## One interactive-figure convention
+
+**Status: shipped** as `figure.sketch` — stage, controls row, caption, themed
+sliders and buttons. Only the per-post maths is left to write. The shared rAF
+helper is still open.
 
 Not a framework — a convention, reused:
 
@@ -113,10 +119,9 @@ body of work rather than assorted demos.
 
 ## Two free polish items
 
-- `<details>` "show the code that made this figure" under each visualization.
-  Native element, zero JS, exactly what this audience wants.
-- A **full-bleed figure** class. A Lorenz attractor squeezed into a 720px column
-  is a waste of a Lorenz attractor.
+- ~~`<details>` "show the code that made this figure"~~ Shipped as
+  `<details class="src">`.
+- ~~A **full-bleed figure** class.~~ Shipped as `class="bleed"`.
 
 ## Skipped here
 
@@ -158,14 +163,17 @@ posts work today. Missing and worth adding the same way `dockerfile` and
 
 ## Cheap and high-value
 
+**Status: all four shipped** (containers only for WaveDrom — import the library
+per post).
+
 - **WaveDrom** for digital timing diagrams — I2C/SPI/UART from a small JSON blob
   in a `<script>` tag. Tiny, opt-in, exactly what embedded posts need.
 - **Annotated board photos** — numbered markers absolutely positioned over a
   photo, with a matching legend list. ~20 lines of CSS, and it is how every good
   hardware writeup explains a board.
-- **Image zoom via native `<dialog>`** — macro PCB shots need it, and it serves
-  the visualization posts too. Zero dependencies.
-- **`.bom` and `.specs` table variants** — mostly reuse of existing table styles.
+- ~~**Image zoom via native `<dialog>`**~~ Shipped as `js/lightbox.js`, with a
+  `.gallery` grid and `a.zoom` for single images.
+- ~~**`.bom` and `.specs` table variants**~~ Shipped.
 
 ## Worth the setup
 

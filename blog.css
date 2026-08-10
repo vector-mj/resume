@@ -168,7 +168,9 @@ pre.shell .cmd { color: #fff; font-weight: 600; display: block; }
 pre.shell .cmd::before { content: "$ "; color: var(--teal); font-weight: 700; }
 pre.shell .cmd.root::before { content: "# "; color: #e0a800; }
 pre.shell .out { color: #98a3ad; }      /* command output */
-pre.shell .hl  { color: var(--teal); }  /* draw the eye to one value */
+pre.shell .hl  { color: #ffb454; }      /* draw the eye to one value — amber, so it
+                                           reads as "look here" and never blends with
+                                           the teal $ prompt sitting next to it */
 pre.shell .cm  { color: #6f7b86; }      /* # a comment */
 
 /* --- log viewer ---

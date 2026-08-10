@@ -7,7 +7,18 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Post title — MJH</title>
+
+<!-- Shown in search results and link previews. Rewrite both per post. -->
+<meta name="description" content="One sentence describing the post.">
+<meta property="og:title" content="Post title">
+<meta property="og:description" content="One sentence describing the post.">
+<meta property="og:image" content="https://mjhoseini.com/images/slug.jpg">
+<meta property="og:type" content="article">
+<meta name="twitter:card" content="summary_large_image">
+
 <link rel="stylesheet" href="../blog.css">
+<!-- Applies the saved theme before first paint, so dark mode never flashes white. -->
+<script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
 <nav>
@@ -17,6 +28,7 @@
       <a href="../resume_short.html">Resume</a>
       <a href="../blog.html">Blog</a>
       <a href="../index.html#about">About</a>
+      <button class="themetoggle" type="button" data-theme-toggle aria-label="Toggle theme">☾</button>
     </span>
   </div>
 </nav>
@@ -26,9 +38,12 @@
     <span class="date">2026-08-10</span>
     <h1>Post title</h1>
 
-    <!-- <img class="hero" src="../images/<slug>.svg" alt=""> -->
+    <!-- <img class="hero" src="../images/slug.svg" alt=""> -->
 
     <p class="lead">One-sentence hook that says why this post exists.</p>
+
+    <!-- Fills itself from the h2/h3 headings below. Delete if the post is short. -->
+    <div class="toc" data-auto><p class="ttl">Contents</p></div>
 
     <h2>First section</h2>
     <p>Just write paragraphs. No classes needed.</p>
@@ -41,15 +56,44 @@
       <pre><code class="language-yaml">replicas: 3</code></pre>
     </div>
 
+    <!-- <div class="series">
+      <a href="prev.html"><span class="lbl">Previous</span>Cheatsheet #1: Vim</a>
+      <a class="next" href="next.html"><span class="lbl">Next</span>Cheatsheet #3: tmux</a>
+    </div> -->
+
     <a class="back" href="../blog.html">&larr; Back to blog</a>
   </article>
 </div>
 
-<!-- Drop these two lines if the post has no code in it. -->
+<!-- ===== Scripts: keep only the ones this post actually needs ===== -->
+
+<!-- Code highlighting. Drop if the post has no code. -->
 <script src="../js/highlight.min.js"></script>
 <script>hljs.highlightAll();</script>
 
-<!-- Drop this one if the post has no gallery or zoomable image. -->
+<!-- Copy buttons, table filter, auto-TOC, heading anchors, theme toggle.
+     Safe to keep always: each part no-ops if its markup isn't present. -->
+<script src="../js/enhance.js"></script>
+
+<!-- Gallery / zoomable images. Drop if the post has none. -->
 <script src="../js/lightbox.js"></script>
+
+<!-- ===== Libraries are NOT vendored — import per post, only where needed =====
+  Maths (KaTeX):
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/contrib/auto-render.min.js"
+            onload="renderMathInElement(document.body)"></script>
+
+  Diagrams (Mermaid) — put the diagram source in <pre class="mermaid">:
+    <script type="module">
+      import m from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+      m.initialize({startOnLoad:true, theme:'neutral'});
+    </script>
+
+  Timing diagrams (WaveDrom) — see the styleguide for the markup.
+  3D (three.js) — import as a module and render into <div class="scene">.
+  Prefer a self-hosted copy in js/ over a CDN once a library earns its place.
+-->
 </body>
 </html>

@@ -15,6 +15,25 @@
   --card:  #f7f7f7;
   --border:#e2e2e2;
   --ink:   #1e2228;   /* dark surface for terminal + log blocks */
+
+  /* themed surfaces — redefined wholesale in the dark-mode block below */
+  --bg:      #fff;
+  --navbg:   rgba(255,255,255,.92);
+  --tip-bg:    #f2fbf9;
+  --warn-bg:   #fdf8e8;
+  --danger-bg: #fdf1f0;
+  --add-bg: #e6f6f1; --add-fg: #14684f;
+  --del-bg: #fdeceb; --del-fg: #a3312d;
+
+  /* syntax tokens for light code blocks (dark blocks override on the element) */
+  --hl-cmt:  #8a9199;
+  --hl-key:  #00806b;
+  --hl-str:  #a15c00;
+  --hl-num:  #b3541e;
+  --hl-fn:   #1a6fb5;
+  --hl-attr: #2f6f9f;
+  --hl-type: #7c4dbe;
+  --hl-var:  #c0392b;
   --mono:  ui-monospace, Menlo, Consolas, monospace;
   --sans:  "Source Sans 3", "Source Sans Pro", "Lato", "Segoe UI", system-ui, sans-serif;
 }
@@ -26,7 +45,7 @@ body {
   margin: 0;
   font-family: var(--sans);
   color: var(--body);
-  background: #fff;
+  background: var(--bg);
   line-height: 1.65;
 }
 
@@ -40,7 +59,7 @@ a:hover { text-decoration: underline; }
 /* ---------- nav ---------- */
 nav {
   position: sticky; top: 0; z-index: 10;
-  background: rgba(255,255,255,.92);
+  background: var(--navbg);
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--border);
 }
@@ -169,16 +188,6 @@ pre.log .dim      { color: #7c8792; }
    Token colors are defined here against our own palette, so there is no
    second theme stylesheet to load and no CDN request.
    Opt a block out with class="nohighlight". */
-pre {
-  --hl-cmt:  #8a9199;
-  --hl-key:  #00806b;
-  --hl-str:  #a15c00;
-  --hl-num:  #b3541e;
-  --hl-fn:   #1a6fb5;
-  --hl-attr: #2f6f9f;
-  --hl-type: #7c4dbe;
-  --hl-var:  #c0392b;
-}
 /* dark code block: <pre class="ink"><code class="language-go"> */
 pre.ink { background: var(--ink); border-color: var(--ink); color: #cfd6dd; }
 pre.ink, pre.shell, pre.log {
@@ -207,8 +216,8 @@ pre code.hljs { display: block; padding: 0; background: none; }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong   { font-weight: 700; }
 .hljs-link     { text-decoration: underline; }
-.hljs-addition { background: #e6f6f1; color: #14684f; }
-.hljs-deletion { background: #fdeceb; color: #a3312d; }
+.hljs-addition { background: var(--add-bg); color: var(--add-fg); }
+.hljs-deletion { background: var(--del-bg); color: var(--del-fg); }
 
 /* --- diff ---
    Paste raw diff output into <pre><code class="language-diff"> and highlight.js
@@ -378,9 +387,9 @@ a.tag:hover { color: var(--teal); text-decoration: none; border-color: var(--tea
   background: var(--card);
 }
 .note   { border-left-color: var(--gray); }
-.tip    { border-left-color: var(--teal);    background: #f2fbf9; }
-.warn   { border-left-color: #e0a800;        background: #fdf8e8; }
-.danger { border-left-color: #d9534f;        background: #fdf1f0; }
+.tip    { border-left-color: var(--teal);    background: var(--tip-bg); }
+.warn   { border-left-color: #e0a800;        background: var(--warn-bg); }
+.danger { border-left-color: #d9534f;        background: var(--danger-bg); }
 
 .note > :last-child, .tip > :last-child,
 .warn > :last-child, .danger > :last-child { margin-bottom: 0; }
@@ -466,4 +475,270 @@ footer { color: var(--gray); font-size: .9rem; padding: 2rem 0 3rem; }
 }
 @media (max-width: 480px) {
   ul.posts .thumb { width: 64px; height: 64px; }
+}
+
+/* =========================================================================
+   Enhancements driven by js/enhance.js (all opt-in, all degrade to nothing)
+   ========================================================================= */
+
+/* --- heading anchors: a ¶ that appears on hover --- */
+.anchor {
+  margin-left: .4rem; color: var(--gray); font-weight: 400;
+  text-decoration: none; opacity: 0; transition: opacity .12s;
+}
+h2:hover .anchor, h3:hover .anchor, .anchor:focus { opacity: 1; }
+
+/* --- copy button on code blocks --- */
+.copywrap { position: relative; }
+.copywrap .copybtn {
+  position: absolute; top: .45rem; right: .45rem;
+  font: 600 .7rem/1 var(--sans); letter-spacing: .04em; text-transform: uppercase;
+  color: var(--role); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: .3rem .5rem; cursor: pointer; opacity: 0; transition: opacity .12s;
+}
+.copywrap:hover .copybtn, .copybtn:focus { opacity: 1; }
+.copybtn:hover { color: var(--teal); border-color: var(--teal); }
+.copybtn.done  { color: #fff; background: var(--teal); border-color: var(--teal); opacity: 1; }
+/* dark blocks need a button that reads on dark */
+.copywrap:has(pre.ink) .copybtn,
+.copywrap:has(pre.shell) .copybtn,
+.copywrap:has(pre.log) .copybtn { color: #cfd6dd; background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.2); }
+
+/* --- live filter over a table: <table class="cheat filterable"> --- */
+.tablefilter {
+  width: 100%; margin: 0 0 .6rem;
+  font: inherit; font-size: .9rem;
+  color: var(--body); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: .45rem .7rem;
+}
+.tablefilter:focus { outline: 2px solid var(--teal); outline-offset: 1px; border-color: var(--teal); }
+.filtercount { font-size: .8rem; color: var(--gray); margin: -.3rem 0 .6rem; }
+
+/* --- sticky table of contents on wide screens --- */
+@media (min-width: 1180px) {
+  .toc.stick { position: sticky; top: 72px; }
+}
+
+/* --- series / prev-next navigation --- */
+.series {
+  display: flex; justify-content: space-between; gap: 1rem;
+  margin-top: 2.5rem; padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-weight: 600; font-size: .95rem;
+}
+.series a { display: block; max-width: 48%; }
+.series .lbl { display: block; font-size: .75rem; font-weight: 700; color: var(--gray); text-transform: uppercase; letter-spacing: .05em; }
+.series .next { text-align: right; margin-left: auto; }
+
+/* =========================================================================
+   Figures for mathematical / interactive posts
+   ========================================================================= */
+
+/* --- numbered equation: <div class="eqn"><div class="body">$$…$$</div><span class="num">(1)</span></div> --- */
+.eqn { display: flex; align-items: center; gap: 1rem; margin: 0 0 1.2rem; }
+.eqn .body { flex: 1; overflow-x: auto; text-align: center; }
+.eqn .num  { color: var(--gray); font-variant-numeric: tabular-nums; }
+
+/* --- interactive sketch: canvas + controls + caption ---
+   <figure class="sketch">
+     <canvas></canvas>
+     <div class="controls">
+       <label>K<sub>p</sub> <input type="range" min="0" max="5" step=".1"><output>1.0</output></label>
+       <button type="button">Reset</button>
+     </div>
+     <figcaption>…</figcaption>
+   </figure> */
+figure.sketch {
+  margin: 0 0 1.6rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); overflow: hidden;
+}
+figure.sketch > canvas, figure.sketch > .stage {
+  display: block; width: 100%; aspect-ratio: 16 / 9;
+  background: var(--bg); border: 0; border-radius: 0;
+}
+figure.sketch .controls {
+  display: flex; flex-wrap: wrap; align-items: center; gap: .55rem 1.2rem;
+  padding: .7rem .9rem; border-top: 1px solid var(--border);
+  font-size: .85rem;
+}
+figure.sketch label { display: flex; align-items: center; gap: .45rem; color: var(--role); }
+figure.sketch output { font-family: var(--mono); color: var(--dark); min-width: 3.5ch; }
+figure.sketch figcaption {
+  padding: .6rem .9rem; border-top: 1px solid var(--border);
+  text-align: left; font-size: .85rem;
+}
+input[type="range"] { accent-color: var(--teal); max-width: 9rem; }
+
+/* small button used inside sketches and elsewhere */
+.btn {
+  font: 600 .78rem/1 var(--sans);
+  color: var(--role); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 5px;
+  padding: .35rem .65rem; cursor: pointer;
+}
+.btn:hover { color: var(--teal); border-color: var(--teal); }
+
+/* --- full-bleed figure: escapes the reading column --- */
+.bleed {
+  width: min(1100px, 94vw);
+  margin-left: 50%; transform: translateX(-50%);
+}
+
+/* --- "show the code that made this" --- */
+details.src {
+  margin: -.6rem 0 1.4rem;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); overflow: hidden;
+}
+details.src summary {
+  cursor: pointer; padding: .5rem .9rem;
+  font-size: .82rem; font-weight: 600; color: var(--role);
+}
+details.src summary:hover { color: var(--teal); }
+details.src[open] summary { border-bottom: 1px solid var(--border); }
+details.src pre { margin: 0; border: 0; border-radius: 0; }
+
+/* --- lazily-loaded library containers ---
+   The libraries themselves are NOT vendored. Import them per post; these
+   just reserve a correctly-sized, correctly-themed box so nothing jumps. */
+.scene {                      /* three.js / WebGL */
+  aspect-ratio: 16 / 9; width: 100%;
+  background: var(--ink); border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; display: block;
+}
+.scene > canvas { display: block; width: 100%; height: 100%; border: 0; border-radius: 0; }
+.mermaid, .wavedrom {          /* diagram targets */
+  margin: 0 0 1.4rem; padding: .8rem;
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  overflow-x: auto; text-align: center;
+}
+.mermaid[data-src], .wavedrom[data-src] { min-height: 4rem; }
+
+/* =========================================================================
+   Hardware / electronics
+   ========================================================================= */
+
+/* --- annotated photo: numbered pins over an image + matching legend ---
+   <figure class="annotated">
+     <img src="board.jpg" alt="">
+     <span class="pin" style="left:32%; top:44%">1</span>
+     <figcaption>…</figcaption>
+   </figure>
+   <ol class="legend"><li>Regulator</li>…</ol> */
+figure.annotated { position: relative; margin: 0 0 .6rem; }
+figure.annotated img { width: 100%; }
+figure.annotated .pin {
+  position: absolute; transform: translate(-50%, -50%);
+  width: 1.6rem; height: 1.6rem; border-radius: 50%;
+  background: var(--teal); color: #fff;
+  font: 700 .78rem/1.6rem var(--sans); text-align: center;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85);
+}
+figure.annotated figcaption { position: static; margin-top: .5rem; }
+
+ol.legend { counter-reset: pin; list-style: none; padding-left: 0; margin: 0 0 1.4rem; }
+ol.legend li { counter-increment: pin; position: relative; padding-left: 2.1rem; margin: .3rem 0; }
+ol.legend li::before {
+  content: counter(pin); position: absolute; left: 0; top: .05rem;
+  width: 1.5rem; height: 1.5rem; border-radius: 50%;
+  background: var(--teal); color: #fff;
+  font: 700 .75rem/1.5rem var(--sans); text-align: center;
+}
+
+/* --- bill of materials + spec sheet tables --- */
+table.bom td:first-child  { font-family: var(--mono); white-space: nowrap; }
+table.bom td:nth-child(2) { font-variant-numeric: tabular-nums; }
+
+table.specs th {
+  width: 34%; text-align: left; vertical-align: top;
+  font-weight: 600; color: var(--role);
+  border-bottom: 1px solid var(--border);
+}
+table.specs td { font-variant-numeric: tabular-nums; }
+
+/* =========================================================================
+   Dark mode
+   Auto by system preference; the [data-theme] attribute wins either way so a
+   toggle can override. Only tokens change — no component rule is duplicated.
+   ========================================================================= */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:     #14171a;
+    --navbg:  rgba(20,23,26,.92);
+    --card:   #1c2024;
+    --border: #2b3238;
+    --dark:   #e8ecef;
+    --body:   #c3cad1;
+    --role:   #a8b1b9;
+    --gray:   #8a949d;
+    --teal:   #2ec4a6;
+    --tip-bg:    #14302b;
+    --warn-bg:   #332b12;
+    --danger-bg: #331d1c;
+    --add-bg: #13322a; --add-fg: #7ee2c8;
+    --del-bg: #3a1f1e; --del-fg: #ff9d99;
+    --hl-cmt:  #6f7b86;
+    --hl-key:  #7ee2c8;
+    --hl-str:  #d8b57a;
+    --hl-num:  #e0a06a;
+    --hl-fn:   #7cc4f0;
+    --hl-attr: #9fd0ea;
+    --hl-type: #c4a6f0;
+    --hl-var:  #ff8b80;
+  }
+}
+:root[data-theme="dark"] {
+  --bg:     #14171a;
+  --navbg:  rgba(20,23,26,.92);
+  --card:   #1c2024;
+  --border: #2b3238;
+  --dark:   #e8ecef;
+  --body:   #c3cad1;
+  --role:   #a8b1b9;
+  --gray:   #8a949d;
+  --teal:   #2ec4a6;
+  --tip-bg:    #14302b;
+  --warn-bg:   #332b12;
+  --danger-bg: #331d1c;
+  --add-bg: #13322a; --add-fg: #7ee2c8;
+  --del-bg: #3a1f1e; --del-fg: #ff9d99;
+  --hl-cmt:  #6f7b86;
+  --hl-key:  #7ee2c8;
+  --hl-str:  #d8b57a;
+  --hl-num:  #e0a06a;
+  --hl-fn:   #7cc4f0;
+  --hl-attr: #9fd0ea;
+  --hl-type: #c4a6f0;
+  --hl-var:  #ff8b80;
+}
+
+/* theme toggle button in the nav */
+.themetoggle {
+  background: none; border: 0; cursor: pointer;
+  color: var(--role); font-size: 1rem; padding: .2rem .3rem; margin-left: 1.4rem;
+  line-height: 1;
+}
+.themetoggle:hover { color: var(--teal); }
+
+/* =========================================================================
+   Print — cheatsheets should print cleanly
+   ========================================================================= */
+@media print {
+  nav, .copybtn, .tablefilter, .filtercount, .series, .back,
+  .themetoggle, dialog.lightbox { display: none !important; }
+  body { background: #fff; color: #000; line-height: 1.4; }
+  .wrap, .wrap.wide { max-width: none; padding: 0; }
+  article { padding: 0; }
+  a { color: #000; text-decoration: underline; }
+  h1, h2, h3, h4 { color: #000; break-after: avoid; }
+  pre, table, figure, .note, .tip, .warn, .danger { break-inside: avoid; }
+  pre, pre.ink, pre.shell, pre.log {
+    background: #fff !important; color: #000 !important;
+    border: 1px solid #999 !important;
+  }
+  pre.shell .cmd, pre.log .lv-error, pre.log .lv-warn { color: #000 !important; }
+  .gallery { grid-template-columns: repeat(4, 1fr); }
 }

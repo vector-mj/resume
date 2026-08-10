@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Style guide — MJH blog</title>
 <link rel="stylesheet" href="blog.css">
+<script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 <style>
   /* Page chrome only — these styles are NOT part of blog.css and are not for posts.
      ponytail: lives here because it's one page's furniture, not a shared component. */
@@ -21,7 +22,7 @@
   pre.snip {
     margin: 0;
     border-radius: 0 0 8px 8px;
-    background: #fbfbfb;
+    background: var(--card);
     font-size: .8rem;
     max-height: 22rem;
     white-space: pre-wrap;
@@ -31,7 +32,7 @@
     position: absolute; top: .5rem; right: .5rem;
     font: 600 .72rem/1 var(--sans);
     letter-spacing: .04em; text-transform: uppercase;
-    color: var(--role); background: #fff;
+    color: var(--role); background: var(--bg);
     border: 1px solid var(--border); border-radius: 4px;
     padding: .35rem .6rem; cursor: pointer;
   }
@@ -53,6 +54,7 @@
       <a href="resume_short.html">Resume</a>
       <a href="blog.html">Blog</a>
       <a href="styleguide.html">Styles</a>
+      <button class="themetoggle" type="button" data-theme-toggle aria-label="Toggle theme">☾</button>
     </span>
   </div>
 </nav>
@@ -94,6 +96,12 @@
       <li><a href="#cards">Cards &amp; grid</a></li>
       <li><a href="#meta">Post meta, badges, TOC</a></li>
       <li><a href="#misc">Footnotes, back link, utilities</a></li>
+      <li><a href="#enhance">Copy buttons, filter, anchors, dark mode</a></li>
+      <li><a href="#maths">Equations (KaTeX)</a></li>
+      <li><a href="#sketch">Interactive figures</a></li>
+      <li><a href="#lazylibs">Mermaid, WaveDrom, three.js</a></li>
+      <li><a href="#hardware">Annotated photos, BOM, specs</a></li>
+      <li><a href="#layout">Full-bleed, show-the-code, series nav</a></li>
       <li><a href="#index">Post index row</a></li>
       <li><a href="#skeleton">Full post skeleton</a></li>
     </ul>
@@ -258,7 +266,7 @@ worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</sp
         <tr><td>Error rate</td><td>&gt; 1%</td><td>Roll back</td></tr>
       </tbody>
     </table>
-    <table class="cheat">
+    <table class="cheat filterable">
       <tr><td><code>:wq</code></td><td>write and quit</td></tr>
       <tr><td><code>C-w hjkl</code></td><td>change window</td></tr>
     </table>
@@ -466,6 +474,168 @@ worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</sp
 &lt;/html&gt;</pre>
   </div>
 
+  <h2 class="sec" id="enhance">Copy buttons, filter, anchors, dark mode</h2>
+  <p class="hint">
+    All four come from <code>js/enhance.js</code>, which is safe to load on every post — each part
+    does nothing if its markup is absent. <strong>They are live on this page:</strong> hover any code
+    block for a Copy button, hover a heading for its <code>¶</code> anchor, use the box above the
+    cheatsheet table to filter it, and the moon in the nav toggles dark mode.
+  </p>
+  <ul>
+    <li><strong>Copy buttons</strong> — added to every <code>&lt;pre&gt;</code> automatically. Uses
+      <code>innerText</code>, so the CSS-drawn <code>$</code> prompt is <em>not</em> copied.</li>
+    <li><strong>Table filter</strong> — add <code>filterable</code>:
+      <code>&lt;table class="cheat filterable"&gt;</code>. Built for 60-row cheatsheets.</li>
+    <li><strong>Heading anchors</strong> — every <code>h2</code>/<code>h3</code> in an
+      <code>&lt;article&gt;</code> gets an id and a linkable <code>¶</code>.</li>
+    <li><strong>Auto-TOC</strong> — drop in <code>&lt;div class="toc" data-auto&gt;&lt;p class="ttl"&gt;Contents&lt;/p&gt;&lt;/div&gt;</code>
+      and it fills itself from those headings. Add <code>class="toc stick"</code> to make it follow you on wide screens.</li>
+    <li><strong>Dark mode</strong> — follows the system by default; the toggle stores a choice in
+      <code>localStorage</code>. The one-line snippet in the template's <code>&lt;head&gt;</code>
+      applies it before first paint so there is no white flash.</li>
+  </ul>
+
+  <h2 class="sec" id="maths">Equations (KaTeX)</h2>
+  <p class="hint">
+    KaTeX is <strong>not vendored</strong> — add the three lines from the template's footer to a post
+    that needs maths. Then <code>$…$</code> renders inline and <code>$$…$$</code> as a block.
+    <code>.eqn</code> adds a right-aligned equation number.
+    <em>Below shows the markup unrendered, since this page doesn't load KaTeX.</em>
+  </p>
+  <div class="demo">
+    <p>The controller output is $u(t) = K_p e(t) + K_i \int e\,dt + K_d \frac{de}{dt}$.</p>
+    <div class="eqn">
+      <div class="body">$$ \dot{x} = \sigma(y - x),\quad \dot{y} = x(\rho - z) - y,\quad \dot{z} = xy - \beta z $$</div>
+      <span class="num">(1)</span>
+    </div>
+  </div>
+
+  <h2 class="sec" id="sketch">Interactive figures</h2>
+  <p class="hint">
+    The shell for every canvas-based figure: a stage, a row of controls, a caption. The maths goes in
+    a per-post script; this just makes them all look like the same body of work. Sliders pick up the
+    site teal via <code>accent-color</code>.
+  </p>
+  <div class="demo">
+    <figure class="sketch">
+      <canvas width="960" height="540"></canvas>
+      <div class="controls">
+        <label>K<sub>p</sub> <input type="range" min="0" max="5" step="0.1" value="1.8"><output>1.8</output></label>
+        <label>K<sub>i</sub> <input type="range" min="0" max="2" step="0.05" value="0.4"><output>0.40</output></label>
+        <label>K<sub>d</sub> <input type="range" min="0" max="2" step="0.05" value="0.10"><output>0.10</output></label>
+        <button class="btn" type="button">Reset</button>
+      </div>
+      <figcaption>Step response of a PID-controlled plant. Drag a gain and watch it overshoot.</figcaption>
+    </figure>
+  </div>
+  <p class="hint">Pair it with the source, in a native <code>&lt;details&gt;</code> — no JS:</p>
+  <div class="demo">
+    <details class="src">
+      <summary>Show the code that made this figure</summary>
+      <pre><code class="language-python">def step(kp, ki, kd, dt=0.01, n=1000):
+    e_sum = e_prev = y = v = 0.0
+    for _ in range(n):
+        e = 1.0 - y
+        e_sum += e * dt
+        u = kp*e + ki*e_sum + kd*(e - e_prev)/dt
+        v += (u - 0.6*v) * dt
+        y += v * dt
+        e_prev = e
+        yield y</code></pre>
+    </details>
+  </div>
+
+  <h2 class="sec" id="lazylibs">Mermaid, WaveDrom, three.js</h2>
+  <p class="hint">
+    <strong>None of these are vendored.</strong> The CSS only reserves a correctly sized, correctly
+    themed box so the page doesn't jump while a library loads. Import the library in the one post that
+    needs it — the template footer has the exact snippets.
+  </p>
+  <div class="demo">
+    <pre class="mermaid nohighlight">graph LR
+  A[Client] --&gt; B{Load balancer}
+  B --&gt; C[api-1]
+  B --&gt; D[api-2]
+  C --&gt; E[(Postgres)]
+  D --&gt; E</pre>
+  </div>
+  <p class="hint">
+    WaveDrom draws digital timing diagrams — SPI, I²C, UART — from a small JSON blob.
+    Put the JSON in a <code>&lt;script type="WaveDrom"&gt;</code> tag inside a <code>.wavedrom</code> box:
+  </p>
+  <div class="demo">
+    <div class="wavedrom">
+      <pre class="nohighlight">{ "signal": [
+  { "name": "CS",   "wave": "10......1" },
+  { "name": "SCLK", "wave": "0.p......" },
+  { "name": "MOSI", "wave": "x.2..3..x", "data": ["cmd", "addr"] }
+]}</pre>
+    </div>
+  </div>
+
+  <p class="hint">And a WebGL stage — three.js renders into it, with a static image as the no-JS fallback:</p>
+  <div class="demo">
+    <figure>
+      <div class="scene"></div>
+      <figcaption>Lorenz attractor. Same equations as (1), rendered in 3D.</figcaption>
+    </figure>
+  </div>
+
+  <h2 class="sec" id="hardware">Annotated photos, BOM, specs</h2>
+  <p class="hint">
+    Numbered pins positioned over a photo with <code>left</code>/<code>top</code> percentages, plus a
+    legend whose numbers are generated by a CSS counter — so the two never drift out of sync.
+  </p>
+  <div class="demo">
+    <figure class="annotated">
+      <img src="images/resume-full-3.jpg" alt="Board overview">
+      <span class="pin" style="left:22%; top:30%">1</span>
+      <span class="pin" style="left:56%; top:52%">2</span>
+      <span class="pin" style="left:78%; top:24%">3</span>
+    </figure>
+    <ol class="legend">
+      <li>3V3 regulator — gets warm under load</li>
+      <li>MCU, with the crystal just north of it</li>
+      <li>Debug header (SWD)</li>
+    </ol>
+  </div>
+  <p class="hint">A bill of materials, and a spec sheet:</p>
+  <div class="demo">
+    <table class="bom">
+      <thead><tr><th>Ref</th><th>Qty</th><th>Value</th><th>Package</th></tr></thead>
+      <tbody>
+        <tr><td>C1, C2</td><td>2</td><td>22 pF</td><td>0603</td></tr>
+        <tr><td>U1</td><td>1</td><td>AMS1117-3.3</td><td>SOT-223</td></tr>
+      </tbody>
+    </table>
+    <table class="specs">
+      <tr><th>Supply voltage</th><td>3.0 – 3.6 V</td></tr>
+      <tr><th>Quiescent current</th><td>4.2 mA</td></tr>
+      <tr><th>Operating temp</th><td>−40 to 85 °C</td></tr>
+    </table>
+  </div>
+
+  <h2 class="sec" id="layout">Full-bleed, series nav</h2>
+  <p class="hint"><code>class="bleed"</code> lets a figure escape the 720px reading column — for attractors, wide diagrams, and board shots:</p>
+  <div class="demo">
+    <figure class="bleed">
+      <img src="images/resume-full-5.jpg" alt="A wide figure">
+      <figcaption>A full-bleed figure, wider than the text around it.</figcaption>
+    </figure>
+  </div>
+  <p class="hint">Previous/next links for a series — the Vim post is "Cheatsheet #1", so this earns its place:</p>
+  <div class="demo">
+    <div class="series">
+      <a href="#layout"><span class="lbl">Previous</span>Cheatsheet #1: Vim</a>
+      <a class="next" href="#layout"><span class="lbl">Next</span>Cheatsheet #3: tmux</a>
+    </div>
+  </div>
+  <p class="hint">
+    There is also a <strong>print stylesheet</strong>: nav, copy buttons, filter boxes and series links are
+    hidden, dark code blocks invert to ink-on-white, and tables and figures avoid page breaks.
+    Press <kbd>Ctrl</kbd>+<kbd>P</kbd> on any post to see it.
+  </p>
+
   <h2 class="sec" id="index">Post index row</h2>
   <p class="hint">Not for inside a post — this is the <code>&lt;li&gt;</code> you paste into <code>blog.html</code> to list a new post.</p>
   <div class="demo">
@@ -553,5 +723,7 @@ hljs.highlightAll();
 <!-- after the snippet generator, so the lightbox binds to the demo galleries
      and its injected <dialog> never lands inside a captured snippet -->
 <script src="js/lightbox.js"></script>
+<!-- last: wraps every <pre> in a copy button, so it must run after snippet capture -->
+<script src="js/enhance.js"></script>
 </body>
 </html>

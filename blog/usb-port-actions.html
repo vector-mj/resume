@@ -41,14 +41,6 @@
       has is a spare USB port and an 8&nbsp;GB stick from a drawer — which, it turns out, is enough.
     </p>
 
-    <div class="danger">
-      <p class="ttl">Read this bit</p>
-      <p>This deliberately trades a little security for a control path that survives the network
-      going away. Anyone who can physically reach the case can now take the machine down, and so can an
-      absent-minded moment with the wrong port. That's an acceptable trade in a locked room you control;
-      it is a terrible one anywhere with foot traffic, and worse in a shared rack. Choose ports you don't
-      otherwise use, and know that the drive itself is now a key.</p>
-    </div>
 
     <div class="toc" data-auto><p class="ttl">Contents</p></div>
 
@@ -123,13 +115,13 @@ Bus 002 Device 001: ID 1d6b:0003 Linux Foundation 3.0 root hub</span></pre>
     </p>
 
     <pre class="shell"><span class="cmd">dmesg -Hw</span><span class="out">[ 3424.877813] usb <span class="hl">1-3</span>: new high-speed USB device number 9 using xhci_hcd
-[ 3425.006386] usb 1-3: New USB device found, idVendor=13fe, idProduct=3e00, bcdDevice= 1.00
-[ 3425.006390] usb 1-3: New USB device strings: Mfr=1, Product=2, SerialNumber=3
-[ 3425.006391] usb 1-3: Product: Silicon-Power8G
-[ 3425.006392] usb 1-3: Manufacturer: UFD 2.0
-[ 3425.006393] usb 1-3: SerialNumber: 12050650048E60025CB8DD13B3D
-[ 3425.007237] usb-storage 1-3:1.0: USB Mass Storage device detected
-[ 3425.007322] scsi host8: usb-storage 1-3:1.0
+[ 3425.006386] usb <span class="hl">1-3</span>: New USB device found, idVendor=13fe, idProduct=3e00, bcdDevice= 1.00
+[ 3425.006390] usb <span class="hl">1-3</span>: New USB device strings: Mfr=1, Product=2, SerialNumber=3
+[ 3425.006391] usb <span class="hl">1-3</span>: Product: Silicon-Power8G
+[ 3425.006392] usb <span class="hl">1-3</span>: Manufacturer: UFD 2.0
+[ 3425.006393] usb <span class="hl">1-3</span>: SerialNumber: 12050650048E60025CB8DD13B3D
+[ 3425.007237] usb-storage <span class="hl">1-3</span>:1.0: USB Mass Storage device detected
+[ 3425.007322] scsi host8: usb-storage <span class="hl">1-3</span>:1.0
 [ 3426.093984] scsi 8:0:0:0: Direct-Access     UFD 2.0  Silicon-Power8G  PMAP PQ: 0 ANSI: 4
 [ 3426.094125] sd 8:0:0:0: Attached scsi generic sg1 type 0
 [ 3427.330539] sd 8:0:0:0: [sdb] 15124992 512-byte logical blocks: (7.74 GB/7.21 GiB)
@@ -289,12 +281,6 @@ Connection to server closed.</span></pre>
       <pre><code class="language-bash">ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTRS{idVendor}=="13fe", ATTRS{idProduct}=="3e00", RUN+="/usr/local/bin/usb_action.sh $env{DEVPATH} add"</code></pre>
     </div>
 
-    <div class="warn">
-      <p class="ttl">One more thing udev will do to you</p>
-      <p><code>RUN+=</code> is meant for short-lived commands; udev kills long-running ones. Powering the
-      machine off is fast enough to get away with, but if you extend this into anything slower, hand
-      the work to a systemd unit and let the rule just start it.</p>
-    </div>
 
     <h2>Was it worth it</h2>
     <p>

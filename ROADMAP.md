@@ -129,3 +129,64 @@ engine, and emphatically a plugin system for figures. Also: no shared
 **"Your autoscaler is a PID controller and that's why it oscillates."**
 Interactive step response, three sliders. Simultaneously SRE content and control
 theory — it states the blog's thesis in one post.
+
+---
+
+# Electronics / hardware posts
+
+Circuits and boards are not a fifth topic — they close the loop on the other
+four. The unifying claim: the same control and chaos maths shows up in
+Kubernetes and in copper.
+
+## The anchor post: Chua's circuit
+
+A handful of op-amps, two capacitors and an inductor producing a **double-scroll
+chaotic attractor** that can be photographed on a scope. One post that is chaos
+theory, electronics and 3D visualization at once: scope photos of the real
+circuit beside the same attractor rotating in three.js, driven by the same
+equations.
+
+The companion: build a temperature controller, show the overshoot on a scope,
+and note it is the *identical* PID maths as the autoscaler post —
+"control theory, demonstrated once in Kubernetes and once in copper."
+
+## Language packs still missing
+
+The vendored `js/highlight.min.js` already covers `c` and `cpp`, so firmware
+posts work today. Missing and worth adding the same way `dockerfile` and
+`nginx` were (1–2KB each): `verilog`, `vhdl`, `arduino`, `x86asm`.
+
+## Cheap and high-value
+
+- **WaveDrom** for digital timing diagrams — I2C/SPI/UART from a small JSON blob
+  in a `<script>` tag. Tiny, opt-in, exactly what embedded posts need.
+- **Annotated board photos** — numbered markers absolutely positioned over a
+  photo, with a matching legend list. ~20 lines of CSS, and it is how every good
+  hardware writeup explains a board.
+- **Image zoom via native `<dialog>`** — macro PCB shots need it, and it serves
+  the visualization posts too. Zero dependencies.
+- **`.bom` and `.specs` table variants** — mostly reuse of existing table styles.
+
+## Worth the setup
+
+- **SchemDraw** (Python) generating schematics as SVG *at build time*, committed
+  to the repo. Consistent house style, no runtime cost, and it pairs with the
+  `<details>` "show the code that made this figure" idea — for a schematic that
+  is genuinely delightful.
+- **KiCad Interactive BOM** plugin emits a self-contained HTML file with a
+  clickable board ↔ BOM cross-highlight. Drop it in as a linked page.
+- **Gerbers → SVG** with tracespace, at build time, for layer views.
+
+## Heavier but mesmerising
+
+- **3D PCB in three.js** from a KiCad glTF export. Reuses the three.js work the
+  visualization posts already need.
+- **A live circuit simulator embed** (falstad/circuitjs, self-hosted) for the one
+  post where the reader tweaking R and C *is* the point. Megabytes — exactly one
+  post, never the default.
+
+## Skipped here
+
+A homegrown schematic editor, a component database, WebSerial/WebUSB gimmicks,
+and live scope streaming. Precompute with ngspice and plot the results instead —
+the reader cannot tell, and the page stays 50KB.

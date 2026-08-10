@@ -551,32 +551,19 @@ worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</sp
 
   <h2 class="sec" id="lazylibs">Mermaid, WaveDrom, three.js</h2>
   <p class="hint">
-    <strong>None of these are vendored.</strong> The CSS only reserves a correctly sized, correctly
+    <strong>None of these are vendored,</strong> and their sources live in <code>diagrams/</code> rather than in the page &mdash; the boxes below just carry a <code>data-src</code>. The CSS only reserves a correctly sized, correctly
     themed box so the page doesn't jump while a library loads. Import the library in the one post that
     needs it — the template footer has the exact snippets.
   </p>
   <div class="demo">
-    <pre class="mermaid nohighlight nocopy">graph LR
-  A[Client] --&gt; B{Load balancer}
-  B --&gt; C[api-1]
-  B --&gt; D[api-2]
-  C --&gt; E[(Postgres)]
-  D --&gt; E</pre>
+    <pre class="mermaid nohighlight nocopy" data-src="diagrams/architecture.mmd"></pre>
   </div>
   <p class="hint">
     WaveDrom draws digital timing diagrams — SPI, I²C, UART — from a small JSON blob.
-    Put the JSON in a <code>&lt;script type="WaveDrom"&gt;</code> tag inside a <code>.wavedrom</code> box:
+    Keep the JSON in <code>diagrams/</code> and point at it with <code>data-src</code>; the page plants it in the <code>&lt;script type="WaveDrom"&gt;</code> tag the library expects:
   </p>
   <div class="demo">
-    <div class="wavedrom">
-      <script type="WaveDrom">
-      { "signal": [
-        { "name": "CS",   "wave": "10......1" },
-        { "name": "SCLK", "wave": "0.p......" },
-        { "name": "MOSI", "wave": "x.2..3..x", "data": ["cmd", "addr"] }
-      ]}
-      </script>
-    </div>
+    <div class="wavedrom" data-src="diagrams/spi-timing.json"></div>
   </div>
 
   <p class="hint">And a WebGL stage — three.js renders into it, with a static image as the no-JS fallback:</p>
@@ -594,26 +581,32 @@ worker-5c8b-9mtq1       0/1     <span class="hl">CrashLoopBackOff</span>   7</sp
     not change. <strong>Try it on the diagram below.</strong>
   </p>
 
-  <h3>Getting the markup out of draw.io</h3>
+  <h3>How to add one</h3>
   <ol>
-    <li>Open your diagram in draw.io / diagrams.net.</li>
-    <li><strong>Extras → Edit Diagram…</strong> and copy the XML, or use
-      <strong>File → Embed → HTML</strong>, which hands you the whole snippet ready to paste.</li>
-    <li>Paste it into the post as a <code>&lt;div class="drawio mxgraph" data-mxgraph='…'&gt;</code>
-      and load the viewer script once at the end of the page.</li>
+    <li>In draw.io, <strong>File → Save as → Device</strong>, and drop the <code>.drawio</code>
+      into <code>diagrams/</code>.</li>
+    <li>Point the viewer at the file — one line in the post, no XML:<br>
+      <code>&lt;div class="drawio mxgraph" data-mxgraph='{"url":"../diagrams/thing.drawio", …}'&gt;&lt;/div&gt;</code></li>
+    <li>Load the viewer script once at the end of the page.</li>
   </ol>
 
+  <div class="tip">
+    <p class="ttl">The rule for every asset</p>
+    <p><strong>Anything that isn't code lives in its own file and is referenced by link</strong> —
+    diagrams, timing definitions, images, media. Only code belongs inline, where being able to read
+    it <em>is</em> the point. It keeps the post source short, keeps the asset editable in the tool
+    that made it, and makes a diff show a diagram change as a diagram change.</p>
+  </div>
+
   <div class="demo">
-    <div class="drawio mxgraph" data-mxgraph='{"highlight":"#00a388","nav":true,"resize":true,"toolbar":"zoom layers lightbox","edit":null,"xml":"<mxfile><diagram id=\"d1\" name=\"Page-1\"><mxGraphModel dx=\"800\" dy=\"400\" grid=\"0\" page=\"0\" math=\"0\" shadow=\"0\"><root><mxCell id=\"0\"/><mxCell id=\"1\" parent=\"0\"/><mxCell id=\"2\" value=\"USB insert\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;\" vertex=\"1\" parent=\"1\"><mxGeometry x=\"40\" y=\"120\" width=\"120\" height=\"50\" as=\"geometry\"/></mxCell><mxCell id=\"3\" value=\"udev rule\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;\" vertex=\"1\" parent=\"1\"><mxGeometry x=\"220\" y=\"120\" width=\"120\" height=\"50\" as=\"geometry\"/></mxCell><mxCell id=\"4\" value=\"usb_action.sh\" style=\"rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;\" vertex=\"1\" parent=\"1\"><mxGeometry x=\"400\" y=\"120\" width=\"120\" height=\"50\" as=\"geometry\"/></mxCell><mxCell id=\"5\" value=\"suspend\" style=\"rounded=1;whiteSpace=wrap;html=1;\" vertex=\"1\" parent=\"1\"><mxGeometry x=\"580\" y=\"40\" width=\"100\" height=\"40\" as=\"geometry\"/></mxCell><mxCell id=\"6\" value=\"reboot\" style=\"rounded=1;whiteSpace=wrap;html=1;\" vertex=\"1\" parent=\"1\"><mxGeometry x=\"580\" y=\"125\" width=\"100\" height=\"40\" as=\"geometry\"/></mxCell><mxCell id=\"7\" value=\"shutdown\" style=\"rounded=1;whiteSpace=wrap;html=1;\" vertex=\"1\" parent=\"1\"><mxGeometry x=\"580\" y=\"210\" width=\"100\" height=\"40\" as=\"geometry\"/></mxCell><mxCell id=\"8\" style=\"edgeStyle=orthogonalEdgeStyle;html=1;\" edge=\"1\" parent=\"1\" source=\"2\" target=\"3\"><mxGeometry relative=\"1\" as=\"geometry\"/></mxCell><mxCell id=\"9\" style=\"edgeStyle=orthogonalEdgeStyle;html=1;\" edge=\"1\" parent=\"1\" source=\"3\" target=\"4\"><mxGeometry relative=\"1\" as=\"geometry\"/></mxCell><mxCell id=\"10\" value=\"1-3\" style=\"edgeStyle=orthogonalEdgeStyle;html=1;\" edge=\"1\" parent=\"1\" source=\"4\" target=\"5\"><mxGeometry relative=\"1\" as=\"geometry\"/></mxCell><mxCell id=\"11\" value=\"1-6\" style=\"edgeStyle=orthogonalEdgeStyle;html=1;\" edge=\"1\" parent=\"1\" source=\"4\" target=\"6\"><mxGeometry relative=\"1\" as=\"geometry\"/></mxCell><mxCell id=\"12\" value=\"1-5\" style=\"edgeStyle=orthogonalEdgeStyle;html=1;\" edge=\"1\" parent=\"1\" source=\"4\" target=\"7\"><mxGeometry relative=\"1\" as=\"geometry\"/></mxCell></root></mxGraphModel></diagram></mxfile>"}'></div>
+    <div class="drawio mxgraph" data-mxgraph='{"highlight":"#00a388","nav":true,"resize":true,"toolbar":"zoom layers lightbox","edit":null,"url":"diagrams/usb-port-flow.drawio"}'></div>
   </div>
 
   <div class="note">
     <p class="ttl">Two things to know</p>
     <p>The viewer is about <strong>4&nbsp;MB</strong>. Load it only in posts that actually contain a
     diagram, and never alongside three.js in the same post.</p>
-    <p>The diagram XML lives inside the page, so it loads with no extra request and keeps working
-    if diagrams.net ever moves. You can instead point at a file with
-    <code>"url":"../diagrams/thing.drawio"</code> if you would rather keep the post markup short.</p>
+    <p>The file is fetched at runtime, so it has to sit on the same site as the page. If you ever need a diagram with no extra request at all, swap <code>"url"</code> for <code>"xml"</code> and inline it — draw.io&rsquo;s <strong>File &rarr; Embed &rarr; HTML</strong> produces that form.</p>
   </div>
 
   <p class="hint">
@@ -793,10 +786,22 @@ hljs.highlightAll();
 <!-- draw.io viewer (read-only) -->
 <script src="https://viewer.diagrams.net/js/viewer-static.min.js"></script>
 
-<!-- Diagrams -->
+<!-- Diagrams. The source lives in diagrams/*.mmd, not in the page: fetch it,
+     drop it in, then let mermaid render. Same idea as the draw.io "url" option. -->
 <script type="module">
   import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
   mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+
+  await Promise.all([].map.call(document.querySelectorAll('.mermaid[data-src]'), async el => {
+    try {
+      const r = await fetch(el.dataset.src);
+      if (!r.ok) throw new Error(r.status);
+      el.textContent = await r.text();
+    } catch (e) {
+      el.textContent = 'Could not load ' + el.dataset.src;
+    }
+  }));
+
   mermaid.run({ querySelector: '.mermaid' });
 </script>
 
@@ -859,8 +864,23 @@ hljs.highlightAll();
 </script>
 
 <script>
-  // WaveDrom needs an explicit kick once its skin is in
-  if (window.WaveDrom) WaveDrom.ProcessAll();
+  // WaveDrom reads a <script type="WaveDrom"> tag, so fetch the .json the box
+  // points at, plant it, then kick the library once its skin is in.
+  (function () {
+    var boxes = [].slice.call(document.querySelectorAll('.wavedrom[data-src]'));
+    if (!boxes.length) { if (window.WaveDrom) WaveDrom.ProcessAll(); return; }
+    Promise.all(boxes.map(function (box) {
+      return fetch(box.dataset.src)
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+        .then(function (t) {
+          var s = document.createElement('script');
+          s.type = 'WaveDrom';
+          s.textContent = t;
+          box.appendChild(s);
+        })
+        .catch(function () { box.textContent = 'Could not load ' + box.dataset.src; });
+    })).then(function () { if (window.WaveDrom) WaveDrom.ProcessAll(); });
+  })();
 </script>
 
 <script>

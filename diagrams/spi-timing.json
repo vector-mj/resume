@@ -1,0 +1,5 @@
+{ "signal": [
+  { "name": "CS",   "wave": "10......1" },
+  { "name": "SCLK", "wave": "0.p......" },
+  { "name": "MOSI", "wave": "x.2..3..x", "data": ["cmd", "addr"] }
+]}

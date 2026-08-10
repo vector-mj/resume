@@ -79,6 +79,16 @@
 <script src="../js/lightbox.js"></script>
 
 <!-- ===== Libraries are NOT vendored — import per post, only where needed =====
+
+  Rule for assets: anything that isn't code lives in its own file and is linked,
+  never pasted into the post. Diagrams go in ../diagrams/, media in ../images/.
+  Only code belongs inline. See styleguide.html for each one.
+
+  Diagrams (draw.io, read-only, pan + zoom) — 4MB, so only where there IS a diagram:
+    <div class="drawio mxgraph"
+         data-mxgraph='{"url":"../diagrams/thing.drawio","toolbar":"zoom layers lightbox","edit":null}'></div>
+    <script src="https://viewer.diagrams.net/js/viewer-static.min.js"></script>
+
   Maths (KaTeX):
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
     <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>

@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How to turn your old USB into something — MJH</title>
+<title>Poor man&#39;s IPMI: a USB stick as an out-of-band power button — MJH</title>
 
-<meta name="description" content="Wiring a udev rule to physical USB ports so that plugging a flash drive into a particular socket suspends, reboots, or shuts down a Linux box.">
-<meta property="og:title" content="How to turn your old USB into something">
-<meta property="og:description" content="One flash drive, three ports, three different ways to take a machine down. A udev rule, a shell script, and the logs to prove it.">
+<meta name="description" content="Two machines, one keyboard. Shut down the wrong one and the only way to stop the other is the power button. A udev rule that maps physical USB ports to suspend, reboot and shutdown fixes that.">
+<meta property="og:title" content="Poor man&#39;s IPMI: an old USB stick as an out-of-band power button">
+<meta property="og:description" content="Two machines, one keyboard. Shut down the wrong one and the only way to stop the other is the power button. A udev rule that maps physical USB ports to suspend, reboot and shutdown fixes that.">
 <meta property="og:image" content="https://mjhoseini.com/images/usb-hero.jpg">
 <meta property="og:type" content="article">
 <meta name="twitter:card" content="summary_large_image">
@@ -31,25 +31,57 @@
 <div class="wrap">
   <article>
     <span class="date">2026-08-10</span>
-    <h1>How to turn your old USB into something</h1>
+    <h1>Poor man&rsquo;s IPMI: an old USB stick as an out-of-band power button</h1>
 
     <img class="hero" src="../images/usb-hero.jpg" alt="A Silicon Power flash drive resting on the RGB-lit mesh panel of a PC case">
 
     <p class="lead">
-      That 8&nbsp;GB stick in your drawer is too small to be useful and too fine to throw away.
-      So let's give it a job: plug it into one port and the machine suspends, another and it reboots,
-      a third and it shuts down. No keyboard, no SSH — just a physical key you push into a hole.
+      Real servers have a baseboard management controller: a little computer that stays awake so you can
+      power the big one down even when the operating system is unreachable. Mine doesn't have one. What it
+      has is a spare USB port and an 8&nbsp;GB stick from a drawer — which, it turns out, is enough.
     </p>
 
     <div class="danger">
       <p class="ttl">Read this bit</p>
-      <p>This deliberately makes a physical port able to power off a running machine. Anyone
-      who can reach the case can take the box down, and an accidental nudge does the same. Do it on a
-      home lab box you can afford to lose — never on anything that matters, and never on anything
-      in a shared or public space.</p>
+      <p>This deliberately trades a little security for a control path that survives the network
+      going away. Anyone who can physically reach the case can now take the machine down, and so can an
+      absent-minded moment with the wrong port. That's an acceptable trade in a locked room you control;
+      it is a terrible one anywhere with foot traffic, and worse in a shared rack. Choose ports you don't
+      otherwise use, and know that the drive itself is now a key.</p>
     </div>
 
     <div class="toc" data-auto><p class="ttl">Contents</p></div>
+
+    <h2>The problem: shutting off the machine you're shutting off from</h2>
+    <p>
+      Two computers in one room. The monitors are plugged into the first one; the second is headless and
+      I reach it over SSH from the first. Comfortable, until the evening I shut the first one down and
+      realised what I'd just done: the machine I was using to talk to the server <em>was</em> the interface
+      to the server. No display, no keyboard, no session. The only control left was the power button.
+    </p>
+    <p>
+      Holding a power button is not a shutdown, it's a crash. That box runs VMs. It means guests killed
+      mid-write, buffers never flushed, filesystems dirty on the way back up. I did it once and disliked
+      myself for it.
+    </p>
+
+    <div class="note">
+      <p class="ttl">Yes, there are better answers</p>
+      <p>IPMI, iDRAC or iLO if the hardware has a BMC. A serial console. A managed PDU. Or simply keeping a
+      phone or laptop on the same network with an SSH client on it. If any of those are available to you,
+      use them — they are the real solution and this is not.</p>
+    </div>
+
+    <p>
+      But consumer motherboards don't ship with a BMC, and plenty of environments won't let you add one, or
+      lock the network down to the point where none of the above is on the table. And there is one failure
+      mode where every network-based answer fails together: <strong>when the thing that's broken is the
+      network.</strong> That's the whole meaning of <em>out-of-band</em> — a control path that doesn't
+      depend on the path that's down. A USB port is about as out-of-band as it gets.
+    </p>
+    <p>
+      So this is the backup plan. It costs one drawer drive and about fifteen lines of shell.
+    </p>
 
     <h2>The idea</h2>
     <p>
@@ -266,9 +298,15 @@ Connection to server closed.</span></pre>
 
     <h2>Was it worth it</h2>
     <p>
-      Not really. That's rather the point. But it is a genuinely good way to learn what
-      <code>udev</code> actually does, and now the drawer drive has a purpose: it's the world's most
-      over-engineered power button.
+      I haven't hard-powered that machine since. The stick lives next to the case now, and when I've
+      shut the wrong computer down first — which I still do — the server goes down cleanly, VMs and all,
+      by walking two metres and pushing a drive into a hole.
+    </p>
+    <p>
+      It is not a substitute for a BMC and I wouldn't run it anywhere with foot traffic. But as the thing
+      you fall back on when the network is the casualty, a control path made of copper and a
+      <code>case</code> statement is hard to beat. And it's a genuinely good way to learn what
+      <code>udev</code> is actually doing under all those rules you've copied off the internet.
     </p>
 
     <figure>

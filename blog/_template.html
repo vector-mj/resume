@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<!-- Copy this file to blog/<slug>.html, fill it in, then add an <li> to ../blog.html.
+     Every bare tag is already styled — see ../styleguide.html for the component catalog.
+     Posts stay flat in blog/ so ../blog.css resolves. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post title — MJH</title>
+<link rel="stylesheet" href="../blog.css">
+</head>
+<body>
+<nav>
+  <div class="wrap">
+    <span class="brand"><a href="../index.html">MJH</a></span>
+    <span class="links">
+      <a href="../resume_short.html">Resume</a>
+      <a href="../blog.html">Blog</a>
+      <a href="../index.html#about">About</a>
+    </span>
+  </div>
+</nav>
+
+<div class="wrap">
+  <article>
+    <span class="date">2026-08-10</span>
+    <h1>Post title</h1>
+
+    <!-- <img class="hero" src="../images/<slug>.svg" alt=""> -->
+
+    <p class="lead">One-sentence hook that says why this post exists.</p>
+
+    <h2>First section</h2>
+    <p>Just write paragraphs. No classes needed.</p>
+
+    <!-- Code: name the language and it gets highlighted.
+         38 languages built in, incl. bash yaml json dockerfile nginx go rust python sql.
+         Add class="nohighlight" to opt a block out. -->
+    <div class="code">
+      <p class="code-ttl">example.yml</p>
+      <pre><code class="language-yaml">replicas: 3</code></pre>
+    </div>
+
+    <a class="back" href="../blog.html">&larr; Back to blog</a>
+  </article>
+</div>
+
+<!-- Drop these two lines if the post has no code in it. -->
+<script src="../js/highlight.min.js"></script>
+<script>hljs.highlightAll();</script>
+</body>
+</html>

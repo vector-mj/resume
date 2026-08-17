@@ -4,8 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Blog — Mohammad Javad Hoseini</title>
+
+<link rel="canonical" href="https://mjha.ir/blog.html">
+<meta name="description" content="Notes on infra, reliability, and whatever I'm breaking this week — the blog of Mohammad Javad Hoseini.">
+<meta property="og:url" content="https://mjha.ir/blog.html">
 <link rel="stylesheet" href="css/blog.css">
 <script>try{var t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+
+<!-- Privacy-friendly analytics by Plausible -->
+<script async src="https://plausible.io/js/pa-lKl7wXhR_NHMuRP9A0LEI.js"></script>
+<script>
+  window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
+  plausible.init()
+</script>
+
+<!-- Microsoft Clarity -->
+<script type="text/javascript">
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "y3v7bkkcpn");
+</script>
 </head>
 <body>
 <nav>
@@ -26,6 +46,16 @@
 
   <!-- ponytail: newest first. Copy a <li>, point href at blog/<slug>.html, thumb at images/<slug>.jpg, done. -->
   <ul class="posts">
+    <li>
+      <a href="blog/provider-agnostic-iac.html">
+        <img class="thumb" src="images/iac_post/pulumi.svg" alt="" loading="lazy">
+        <span>
+          <span class="date">2026-08-17</span>
+          <span class="title">Agnostic, not HCL with Python punctuation</span>
+          <p class="excerpt">Picking Pulumi over Terraform buys you a programming language, and most of us never use it. Models, plus one handler per provider, is what makes the choice worth it.</p>
+        </span>
+      </a>
+    </li>
     <li>
       <a href="blog/usb-port-actions.html">
         <img class="thumb" src="images/usb-hero.jpg" alt="" loading="lazy">
